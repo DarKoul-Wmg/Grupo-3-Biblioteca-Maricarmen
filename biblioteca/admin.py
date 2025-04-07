@@ -16,6 +16,14 @@ class UsuariAdmin(UserAdmin):
                 'fields': ('centre','cicle','imatge'),
             }),
     )
+    
+class ExemplarAdmin(admin.ModelAdmin):
+    readonly_fields = ['centre']
+    def save_model(self, request, obj, form, change):
+        if not change and not obj.pk:
+            if not obj.centre_id:
+                obj.centre = request.user.centre  # o request.user.perfil.centre segons el teu model
+        super().save_model(request, obj, form, change)
 
 class ExemplarsInline(admin.TabularInline):
 	model = Exemplar
@@ -40,6 +48,7 @@ admin.site.register(Categoria,CategoriaAdmin)
 admin.site.register(Pais)
 admin.site.register(Llengua)
 admin.site.register(Llibre,LlibreAdmin)
+admin.site.register(Exemplar,ExemplarAdmin)
 admin.site.register(Revista)
 admin.site.register(Dispositiu)
 admin.site.register(Imatge)

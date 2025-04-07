@@ -88,8 +88,9 @@ class Dispositiu(Cataleg):
 class Exemplar(models.Model):
     cataleg = models.ForeignKey(Cataleg, on_delete=models.CASCADE)
     registre = models.CharField(max_length=100,null=True,blank=True)
-    exclos_prestec = models.BooleanField(default=True)
+    exclos_prestec = models.BooleanField(default=False)
     baixa = models.BooleanField(default=False)
+    centre = models.ForeignKey("Centre",on_delete=models.SET_NULL,null=True,blank=True)
     def __str__(self):
         return "REG:{} - {}".format(self.registre,self.cataleg.titol)
 
