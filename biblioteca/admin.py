@@ -11,10 +11,18 @@ class CategoriaAdmin(admin.ModelAdmin):
 
 
 class UsuariAdmin(UserAdmin):
-    fieldsets = UserAdmin.fieldsets + (
-            ("Dades acadèmiques", {
-                'fields': ('centre','cicle','imatge'),
-            }),
+    fieldsets = list(UserAdmin.fieldsets)  # Convertimos a lista para poder modificar los campos del admin panel (django)
+
+    # telefon en grup existent
+    fieldsets[1] = (
+        fieldsets[1][0],
+        {'fields': fieldsets[1][1]['fields'] + ('telefon',)}
+    )
+
+    fieldsets += (
+        ("Dades acadèmiques", {
+            'fields': ('centre', 'cicle', 'imatge'),
+        }),
     )
     
 class ExemplarAdmin(admin.ModelAdmin):
