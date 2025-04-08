@@ -103,9 +103,13 @@ class Imatge(models.Model):
 
 class Centre(models.Model):
     nom = models.CharField(max_length=200)
+    def __str__(self):
+        return self.nom
 
 class Cicle(models.Model):
     nom = models.CharField(max_length=200)
+    def __str__(self):
+        return self.nom
 
 class Usuari(AbstractUser):
     centre = models.ForeignKey(Centre,on_delete=models.SET_NULL,null=True,blank=True)
