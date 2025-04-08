@@ -1,5 +1,6 @@
 from django.contrib.auth import authenticate
 from ninja import NinjaAPI, Schema
+from ninja.errors import HttpError
 from ninja.security import HttpBasicAuth, HttpBearer
 from .models import *
 from typing import List, Optional, Union, Literal
@@ -43,6 +44,20 @@ class CatalegOut(Schema):
 class LlibreOut(CatalegOut):
     editorial: Optional[str]
     ISBN: Optional[str]
+    
+class LlibreDetailOut(CatalegOut):
+    editorial: Optional[str]
+    ISBN: Optional[str]
+    colleccio: Optional[str]
+    lloc: Optional[str]
+    pais: Optional[str]
+    llengua: Optional[str]
+    numero: Optional[int]
+    volums: Optional[int]
+    pagines: Optional[int]
+    info_url: Optional[str]
+    preview_url: Optional[str]
+    thumbnail_url: Optional[str]
 
 class ExemplarOut(Schema):
     id: int
@@ -63,6 +78,19 @@ class LlibreIn(Schema):
 def get_llibres(request):
     qs = Llibre.objects.all()
     return qs
+
+@api.get("/llibres/search", response=List[LlibreOut])
+def search_llibres(request, text: str):
+    llibres = Llibre.objects.filter(titol__icontains=text) | Llibre.objects.filter(autor__icontains=text)
+    llibres = llibres.distinct()
+    return llibres
+
+@api.get("/llibres/{llibre_id}", response=LlibreDetailOut)
+def get_llibre_by_id(request, llibre_id: int):
+    try:
+        return Llibre.objects.select_related("pais", "llengua").get(id=llibre_id)
+    except Llibre.DoesNotExist:
+        raise HttpError(404, f"Llibre with id {llibre_id} not found")
 
 @api.post("/llibres/")
 def post_llibres(request, payload: LlibreIn):
