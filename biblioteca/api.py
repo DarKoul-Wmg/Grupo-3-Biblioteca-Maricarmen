@@ -2,6 +2,7 @@ from django.contrib.auth import authenticate
 from ninja import NinjaAPI, Schema
 from ninja.errors import HttpError
 from ninja.security import HttpBasicAuth, HttpBearer
+from django.shortcuts import get_object_or_404
 from .models import *
 from typing import List, Optional, Union, Literal
 import secrets
@@ -44,20 +45,6 @@ class CatalegOut(Schema):
 class LlibreOut(CatalegOut):
     editorial: Optional[str]
     ISBN: Optional[str]
-    
-class LlibreDetailOut(CatalegOut):
-    editorial: Optional[str]
-    ISBN: Optional[str]
-    colleccio: Optional[str]
-    lloc: Optional[str]
-    pais: Optional[str]
-    llengua: Optional[str]
-    numero: Optional[int]
-    volums: Optional[int]
-    pagines: Optional[int]
-    info_url: Optional[str]
-    preview_url: Optional[str]
-    thumbnail_url: Optional[str]
 
 class ExemplarOut(Schema):
     id: int
@@ -66,6 +53,31 @@ class ExemplarOut(Schema):
     baixa: bool
     cataleg: Union[LlibreOut,CatalegOut]
     tipus: str
+
+class CentreOut(Schema):
+    nom: str
+    
+class ExemplarInLlibreOut(Schema):
+    id: int
+    registre: Optional[str]
+    exclos_prestec: bool
+    baixa: bool
+    centre: Optional[CentreOut]
+
+class LlibreDetailOut(CatalegOut):
+    editorial: Optional[str]
+    ISBN: Optional[str]
+    colleccio: Optional[str]
+    lloc: Optional[str]
+    pais: Optional[str]  # Or use PaisOut if you want full info
+    llengua: Optional[str]
+    numero: Optional[int]
+    volums: Optional[int]
+    pagines: Optional[int]
+    info_url: Optional[str]
+    preview_url: Optional[str]
+    thumbnail_url: Optional[str]
+    exemplars: List[ExemplarInLlibreOut] = []
 
 class LlibreIn(Schema):
     titol: str
@@ -88,9 +100,12 @@ def search_llibres(request, text: str):
 @api.get("/llibres/{llibre_id}", response=LlibreDetailOut)
 def get_llibre_by_id(request, llibre_id: int):
     try:
-        return Llibre.objects.select_related("pais", "llengua").get(id=llibre_id)
+        llibre = Llibre.objects.get(id=llibre_id)
+        exemplars = list(Exemplar.objects.select_related("centre").filter(cataleg=llibre))
+        llibre.exemplars = exemplars  # Schema will use this
+        return LlibreDetailOut.from_orm(llibre)
     except Llibre.DoesNotExist:
-        raise HttpError(404, f"Llibre with id {llibre_id} not found")
+        raise HttpError(404, "Llibre not found")
 
 @api.post("/llibres/")
 def post_llibres(request, payload: LlibreIn):
