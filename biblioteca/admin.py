@@ -24,20 +24,39 @@ class UsuariAdmin(UserAdmin):
             'fields': ('centre', 'cicle', 'imatge'),
         }),
     )
-    
-class ExemplarAdmin(admin.ModelAdmin):
-    readonly_fields = ['centre']
-    def save_model(self, request, obj, form, change):
-        if not change and not obj.pk:
-            if not obj.centre_id:
-                obj.centre = request.user.centre  # o request.user.perfil.centre segons el teu model
-        super().save_model(request, obj, form, change)
 
 class ExemplarsInline(admin.TabularInline):
 	model = Exemplar
 	extra = 1
 	readonly_fields = ('pk',)
-	fields = ('pk','registre','exclos_prestec','baixa')
+	fields = ('pk','registre','exclos_prestec','baixa','centre',)
+ 
+	def get_queryset(self, request):
+		qs = super().get_queryset(request)
+		if request.user.is_superuser:
+			return qs
+		return qs.filter(centre=request.user.centre)
+
+	def get_formset(self, request, obj=None, **kwargs):
+		formset = super().get_formset(request, obj, **kwargs)
+
+		class CustomFormset(formset):
+			def save_new(self, form, commit=True):
+				instance = super().save_new(form, commit=False)
+				if not request.user.is_superuser:
+					instance.centre = request.user.centre
+				instance.exclos_prestec = False  # valor per defecte
+				if commit:
+					instance.save()
+				return instance
+
+		return CustomFormset
+
+	def get_fields(self, request, obj=None):
+		fields = list(super().get_fields(request, obj))
+		if not request.user.is_superuser and 'centre' in fields:
+			fields.remove('centre')
+		return fields
 
 class LlibreAdmin(admin.ModelAdmin):
 	filter_horizontal = ('tags',)
@@ -56,7 +75,6 @@ admin.site.register(Categoria,CategoriaAdmin)
 admin.site.register(Pais)
 admin.site.register(Llengua)
 admin.site.register(Llibre,LlibreAdmin)
-admin.site.register(Exemplar,ExemplarAdmin)
 admin.site.register(Revista)
 admin.site.register(Dispositiu)
 admin.site.register(Imatge)
