@@ -1,3 +1,4 @@
 [submodule "react"]
 	path = react
 	url = https://github.com/DarKoul-Wmg/Grupo-3-REACT-Biblioteca-Maricarmen.git
+	branch = dev

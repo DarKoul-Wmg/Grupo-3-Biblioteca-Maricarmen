@@ -75,3 +75,34 @@ Exemples:
 GET /api/llibres
 paràmetres: no n'hi ha
 
+
+## Apache Server configuration
+
+To make it Django work, you'll need to have wsgi enable. First you'll need to install the package:
+
+    $ sudo apt install libapache2-mod-wsgi-py3
+
+Then you will need to enable it:
+
+    $ a2enmod wsgi
+
+After that you will need to change the configuration files of your specific sites (default would be 000-default.conf) as follows:
+
+    Alias /media/ /var/www/biblioteca/media/
+    Alias /static/ /var/www/biblioteca/static/
+
+    <Directory /var/www/biblioteca/static>
+        Require all granted
+    </Directory>
+
+    WSGIDaemonProcess example.com python-home=/var/www/biblioteca/env python-path=/var/www/biblioteca/
+    WSGIProcessGroup example.com
+
+    WSGIScriptAlias / /var/www/biblioteca/biblioteca/wsgi.py process-group=example.com
+
+    <Directory /var/www/biblioteca/biblioteca>
+    <Files wsgi.py>
+    Require all granted
+    </Files>
+    </Directory>
+

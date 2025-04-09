@@ -2,7 +2,13 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.utils.timezone import now
 from django.contrib.auth.hashers import make_password
+from django.core.validators import RegexValidator
 
+
+telefono_validator = RegexValidator(
+    regex=r'^\d{9}$',  # asegurar que sean numericos
+    message="El número de telèfon ha de tenir exactament 9 dígits numèrics."
+)
 
 class Categoria(models.Model):
     class Meta:
@@ -38,7 +44,7 @@ class Cataleg(models.Model):
     mides = models.CharField(max_length=100,null=True,blank=True)
     tags = models.ManyToManyField(Categoria,blank=True)
     def exemplars(self):
-    	return 0
+        return 0
     def __str__(self):
         return self.titol
 
@@ -88,8 +94,9 @@ class Dispositiu(Cataleg):
 class Exemplar(models.Model):
     cataleg = models.ForeignKey(Cataleg, on_delete=models.CASCADE)
     registre = models.CharField(max_length=100,null=True,blank=True)
-    exclos_prestec = models.BooleanField(default=True)
+    exclos_prestec = models.BooleanField(default=False)
     baixa = models.BooleanField(default=False)
+    centre = models.ForeignKey("Centre",on_delete=models.SET_NULL,null=True,blank=True)
     def __str__(self):
         return "REG:{} - {}".format(self.registre,self.cataleg.titol)
 
@@ -102,15 +109,27 @@ class Imatge(models.Model):
 
 class Centre(models.Model):
     nom = models.CharField(max_length=200)
+    def __str__(self):
+        return self.nom
 
 class Cicle(models.Model):
     nom = models.CharField(max_length=200)
+    def __str__(self):
+        return self.nom
 
 class Usuari(AbstractUser):
     centre = models.ForeignKey(Centre,on_delete=models.SET_NULL,null=True,blank=True)
     cicle = models.ForeignKey(Cicle,on_delete=models.SET_NULL,null=True,blank=True)
     imatge = models.ImageField(upload_to='usuaris/',null=True,blank=True)
     auth_token = models.CharField(max_length=32,blank=True,null=True)
+    telefon = models.CharField(
+        max_length=9, 
+        blank=True,
+        null=True,
+        validators=[telefono_validator]
+    )
+
+    
 
 class Reserva(models.Model):
     class Meta:
