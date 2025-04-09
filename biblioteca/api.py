@@ -257,7 +257,6 @@ def import_users(request, file: UploadedFile = File(...)):
     warnings = []
 
     for index, row in enumerate(reader, start=1):
-        print(index)
         error = False
         # Agafem les dades crues
         nom_raw = row.get("nom")
@@ -271,60 +270,59 @@ def import_users(request, file: UploadedFile = File(...)):
         # Comprovem que cap sigui None o buit
         if not all([nom_raw, cognom1_raw, cognom2_raw, email_raw, telefon_raw, centre_val_raw, grup_val_raw]):
             error = True
-            continue
+        else:
+            # Netegem els valors
+            nom = nom_raw.strip()
+            cognom1 = cognom1_raw.strip()
+            cognom2 = cognom2_raw.strip()
+            email = email_raw.strip()
+            telefon = telefon_raw.strip()
+            centre_val = centre_val_raw.strip()
+            grup_val = grup_val_raw.strip()
 
-        # Netegem els valors
-        nom = nom_raw.strip()
-        cognom1 = cognom1_raw.strip()
-        cognom2 = cognom2_raw.strip()
-        email = email_raw.strip()
-        telefon = telefon_raw.strip()
-        centre_val = centre_val_raw.strip()
-        grup_val = grup_val_raw.strip()
+            last_name = f"{cognom1} {cognom2}"
 
-        last_name = f"{cognom1} {cognom2}"
+            try:
+                centre_obj = Centre.objects.get(nom=centre_val)
+            except Centre.DoesNotExist:
+                print(f"Centre '{centre_val}' no trobat (línia {index})")
+                error = True
 
-        try:
-            centre_obj = Centre.objects.get(nom=centre_val)
-        except Centre.DoesNotExist:
-            error = True
-            continue
+            try:
+                cicle_obj = Cicle.objects.get(nom=grup_val)
+            except Cicle.DoesNotExist:
+                print(f"Cicle '{grup_val}' no trobat (línia {index})")
+                error = True
 
-        try:
-            cicle_obj = Cicle.objects.get(nom=grup_val)
-        except Cicle.DoesNotExist:
-            error = True
-            continue
+            if not error:
+                username = email
+                user, created = Usuari.objects.get_or_create(
+                    username=username,
+                    defaults={
+                        "email": email,
+                        "first_name": nom,
+                        "last_name": last_name,
+                        "telefon": telefon,
+                        "centre": centre_obj,
+                        "cicle": cicle_obj,
+                    }
+                )
 
-        username = email
-
-        user, created = Usuari.objects.get_or_create(
-            username=username,
-            defaults={
-                "email": email,
-                "first_name": nom,
-                "last_name": last_name,
-                "telefon": telefon,
-                "centre": centre_obj,
-                "cicle": cicle_obj,
-            }
-        )
-        
-        print(user)
-
-        if not created:
-            warnings.append(index)
-            continue
+                if not created:
+                    warnings.append(index)
+                    continue
         
         if error:
             errors.append(index)
             imported_error_count += 1
+            continue
             
         imported_count += 1
-
+        
+    print(errors)
     summary = {
         "ok": f"Se han importat {imported_count} entrades correctament",
-        "error": f"Han fallat {imported_error_count} registres, revisa las lineas {len(errors)}",
+        "error": f"Han fallat {imported_error_count} registres, revisa las lineas {', '.join(map(str, errors))}",
         "warning": f"Les entrades {len(warnings)} ja existeixen a la base de dades"
     }
 
