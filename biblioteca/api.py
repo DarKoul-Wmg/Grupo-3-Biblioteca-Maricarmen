@@ -1,10 +1,13 @@
 from django.contrib.auth import authenticate
-from ninja import NinjaAPI, Schema
+from ninja import NinjaAPI, Schema, File, Form
+from ninja.files import UploadedFile
 from ninja.errors import HttpError
 from ninja.security import HttpBasicAuth, HttpBearer
-from django.shortcuts import get_object_or_404
+from django.http import HttpRequest
 from .models import *
 from typing import List, Optional, Union, Literal
+import re  # For email validation
+
 import secrets
 
 api = NinjaAPI()
@@ -156,3 +159,67 @@ def get_exemplars(request):
         )
 
     return result
+
+class UsuariUpdateOut(Schema):
+    username: str
+    email: str
+    telefon: Optional[str]
+    imatge: Optional[str]
+    
+class ProfileUpdatePayload(Schema):
+    email: str 
+    telefon: str = None # Ensure names match frontend 'name' attributes
+
+
+def is_valid_email(email: str) -> bool:
+    """Validate email format."""
+    email_regex = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
+    return re.match(email_regex, email) is not None
+
+@api.post("/update-profile/", auth=AuthBearer())
+def update_profile(request: HttpRequest,                  # Access request for auth user
+    payload: ProfileUpdatePayload = Form(...), # Use Form(...) to get form fields
+    avatar: Optional[UploadedFile] = File(None) # Use File(...) to get the uploaded file, make it optional
+):
+    user = request.auth  # Get authenticated user from token
+
+    if not user:
+        return api.create_response(request, {"details": "User not authenticated."}, status=401)
+
+    errors = {}
+    updated = False # Flag to check if any changes were made
+
+    if payload.email:
+        if not is_valid_email(payload.email):
+            errors["email"] = "Email no té un format válid."
+        elif payload.email != user.email:
+            user.email = payload.email
+            updated = True
+
+    if payload.telefon:
+        if len(payload.telefon) != 9 or not payload.telefon.isdigit():
+            errors["telefon"] = "El teléfon ha de tenir 9 dígits."
+        elif payload.telefon != user.telefon:
+            user.telefon = payload.telefon
+            updated = True
+
+    if avatar:
+        allowed_types = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp']
+        if avatar.content_type not in allowed_types:
+            errors["avatar"] = "Format de imatge invàlid. Només poden ser JPG, JPEG, PNG i WEBP."
+        else:
+            user.imatge = avatar
+            updated = True
+
+    if errors:
+        return api.create_response(request, {"formErrors": errors}, status=400)
+
+    if updated:
+        try:
+            user.save()
+            return api.create_response(request, {"type": "success_modify", "userData": UsuariUpdateOut.from_orm(user)}, status=200)
+        except Exception as e:
+            print(e)
+            return api.create_response(request, {"details": f"Error al intentar actualitzar el perfil. Torna a intentar-ho més tard"}, status=500)
+
+    return api.create_response(request, {"type": "no_change", "detail": "No changes made."}, status=200)
