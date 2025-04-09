@@ -2,11 +2,14 @@ from django.contrib.auth import authenticate
 from ninja import NinjaAPI, Schema, File, Form
 from ninja.files import UploadedFile
 from ninja.errors import HttpError
+from ninja.responses import Response
 from ninja.security import HttpBasicAuth, HttpBearer
 from django.http import HttpRequest
 from .models import *
 from typing import List, Optional, Union, Literal
 import re  # For email validation
+import io  # For handling in-memory file operations
+import csv  # For CSV file handling
 
 import secrets
 
@@ -223,3 +226,104 @@ def update_profile(request: HttpRequest,                  # Access request for a
             return api.create_response(request, {"details": f"Error al intentar actualitzar el perfil. Torna a intentar-ho més tard"}, status=500)
 
     return api.create_response(request, {"type": "no_change", "detail": "No changes made."}, status=200)
+
+
+@api.post("/import-users/")
+def import_users(request, file: UploadedFile = File(...)):
+    # Verifiquem que hi hagi un fitxer i que sigui CSV
+    if not file:
+        return Response({"error": "No s'ha proporcionat cap fitxer."}, status=400)
+    if not file.name.endswith('.csv'):
+        return Response({"error": "El fitxer ha de ser en format CSV."}, status=400)
+
+    try:
+        data_set = file.read().decode("UTF-8")
+    except Exception as e:
+        return Response({"error": f"Error en llegir el fitxer: {str(e)}"}, status=400)
+
+    io_string = io.StringIO(data_set)
+    reader = csv.DictReader(io_string)
+
+    # Validem que les columnes siguin correctes
+    required_fields = {"nom", "cognom1", "cognom2", "email", "telefon", "centre", "grup"}
+    if not required_fields.issubset(set(reader.fieldnames or [])):
+        return Response({
+            "error": f"El fitxer CSV ha de contenir les següents columnes: {', '.join(required_fields)}"
+        }, status=400)
+
+    imported_count = 0
+    imported_error_count = 0
+    errors = []
+    warnings = []
+
+    for index, row in enumerate(reader, start=1):
+        error = False
+        # Agafem les dades crues
+        nom_raw = row.get("nom")
+        cognom1_raw = row.get("cognom1")
+        cognom2_raw = row.get("cognom2")
+        email_raw = row.get("email")
+        telefon_raw = row.get("telefon")
+        centre_val_raw = row.get("centre")
+        grup_val_raw = row.get("grup")
+
+        # Comprovem que cap sigui None o buit
+        if not all([nom_raw, cognom1_raw, cognom2_raw, email_raw, telefon_raw, centre_val_raw, grup_val_raw]):
+            error = True
+        else:
+            # Netegem els valors
+            nom = nom_raw.strip()
+            cognom1 = cognom1_raw.strip()
+            cognom2 = cognom2_raw.strip()
+            email = email_raw.strip()
+            telefon = telefon_raw.strip()
+            centre_val = centre_val_raw.strip()
+            grup_val = grup_val_raw.strip()
+
+            last_name = f"{cognom1} {cognom2}"
+
+            try:
+                centre_obj = Centre.objects.get(nom=centre_val)
+            except Centre.DoesNotExist:
+                print(f"Centre '{centre_val}' no trobat (línia {index})")
+                error = True
+
+            try:
+                cicle_obj = Cicle.objects.get(nom=grup_val)
+            except Cicle.DoesNotExist:
+                print(f"Cicle '{grup_val}' no trobat (línia {index})")
+                error = True
+
+            if not error:
+                username = email
+                user, created = Usuari.objects.get_or_create(
+                    username=username,
+                    defaults={
+                        "email": email,
+                        "first_name": nom,
+                        "last_name": last_name,
+                        "telefon": telefon,
+                        "centre": centre_obj,
+                        "cicle": cicle_obj,
+                    }
+                )
+
+                if not created:
+                    warnings.append(index)
+                    continue
+        
+        if error:
+            errors.append(index)
+            imported_error_count += 1
+            continue
+            
+        imported_count += 1
+        
+    print(errors)
+    summary = {
+        "ok": f"Se han importat {imported_count} entrades correctament",
+        "error": f"Han fallat {imported_error_count} registres, revisa las lineas {', '.join(map(str, errors))}",
+        "warning": f"Les entrades {len(warnings)} ja existeixen a la base de dades"
+    }
+
+    return summary
