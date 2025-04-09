@@ -323,7 +323,7 @@ def import_users(request, file: UploadedFile = File(...)):
     summary = {
         "ok": f"Se han importat {imported_count} entrades correctament",
         "error": f"Han fallat {imported_error_count} registres, revisa las lineas {', '.join(map(str, errors))}",
-        "warning": f"Les entrades {len(warnings)} ja existeixen a la base de dades"
+        "warning": f"Les entrades {', '.join(map(str, warnings))} ja existeixen a la base de dades"
     }
 
     return summary
