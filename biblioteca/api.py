@@ -19,14 +19,18 @@ api = NinjaAPI()
 # Autenticació bàsica
 class BasicAuth(HttpBasicAuth):
     def authenticate(self, request, username, password):
-        user = authenticate(username=username, password=password)
-        if user:
-            # Genera un token simple
-            token = secrets.token_hex(16)
-            user.auth_token = token
-            user.save()
-            return token
-        return None
+        try:
+            # Busca al usuario por email
+            user = Usuari.objects.get(email=username)
+            # Verifica la contraseña
+            if user.check_password(password):
+                # Genera un token simple
+                token = secrets.token_hex(16)
+                user.auth_token = token
+                user.save()
+                return token
+        except Usuari.DoesNotExist:
+            return None
 
 # Autenticació per Token Bearer
 class AuthBearer(HttpBearer):
@@ -36,6 +40,52 @@ class AuthBearer(HttpBearer):
             return user
         except Usuari.DoesNotExist:
             return None
+
+
+
+class UsuariOut(Schema):
+    id: int
+    first_name: str
+    last_name: str
+    email: str
+    telefon: Optional[str]
+    centre: Optional[str]  
+    groups: List[str]  
+    imatge: Optional[str]  
+    
+# Endpoint per obtenir informació de l'usuari
+@api.get("/user-info", auth=AuthBearer())
+def get_user_info(request):
+    user = request.auth  # Usuario autenticado por el token
+
+    # Obtener los grupos (roles) del usuario
+    groups = list(user.groups.values_list("name", flat=True))
+
+    # Obtener el nombre del centro (si existe)
+    centre = user.centre.nom if user.centre else None
+
+    # Construir la URL de la imagen del usuario (si existe)
+    imatge_url = (
+        request.build_absolute_uri(user.imatge.url) if user.imatge else None
+    )
+
+    # Serializar los datos del usuario
+    user_data = UsuariOut(
+        id=user.id,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        email=user.email,
+        telefon=user.telefon,
+        centre=centre,
+        groups=groups,
+        imatge=imatge_url,
+    )
+
+    return {
+        "user-details": user_data.dict(),  # Convertir a dict para incluir en la respuesta
+    }
+
+
 
 # Endpoint per obtenir un token
 @api.get("/token", auth=BasicAuth())
@@ -108,10 +158,40 @@ def get_llibre_by_id(request, llibre_id: int):
     try:
         llibre = Llibre.objects.get(id=llibre_id)
         exemplars = list(Exemplar.objects.select_related("centre").filter(cataleg=llibre))
-        llibre.exemplars = exemplars  # Schema will use this
-        return LlibreDetailOut.from_orm(llibre)
+
+        # Preparar un diccionario con los datos necesarios para el esquema
+        data = {
+            "id": llibre.id,
+            "titol": llibre.titol,
+            "autor": llibre.autor,
+            "editorial": llibre.editorial,
+            "ISBN": llibre.ISBN,
+            "colleccio": llibre.colleccio,
+            "lloc": llibre.lloc,
+            "pais": str(llibre.pais) if llibre.pais else None,
+            "llengua": str(llibre.llengua) if llibre.llengua else None,
+            "numero": llibre.numero,
+            "volums": llibre.volums,
+            "pagines": llibre.pagines,
+            "info_url": llibre.info_url,
+            "preview_url": llibre.preview_url,
+            "thumbnail_url": llibre.thumbnail_url,
+            "exemplars": [
+                ExemplarInLlibreOut(
+                    id=ex.id,
+                    registre=ex.registre,
+                    exclos_prestec=ex.exclos_prestec,
+                    baixa=ex.baixa,
+                    centre=CentreOut(nom=ex.centre.nom) if ex.centre else None,
+                )
+                for ex in exemplars
+            ]
+        }
+
+        return data
     except Llibre.DoesNotExist:
         raise HttpError(404, "Llibre not found")
+
 
 @api.post("/llibres/")
 def post_llibres(request, payload: LlibreIn):
