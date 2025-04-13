@@ -10,7 +10,8 @@ from typing import List, Optional, Union, Literal
 import re  # For email validation
 import io  # For handling in-memory file operations
 import csv  # For CSV file handling
-
+from ninja import Router
+from typing import List
 import secrets
 
 api = NinjaAPI()
@@ -147,10 +148,33 @@ def get_llibres(request):
     qs = Llibre.objects.all()
     return qs
 
-@api.get("/llibres/search", response=List[LlibreOut])
+@api.get("/llibres/search", response=List[LlibreOut]) 
 def search_llibres(request, text: str):
+    text_lower = text.lower()
+
+    # busca titulo y autor (sin duplicados)
     llibres = Llibre.objects.filter(titol__icontains=text) | Llibre.objects.filter(autor__icontains=text)
     llibres = llibres.distinct()
+
+    # Ordena por coincidencia exacta primero, luego por posicion de la coincidencia
+    def relevance_key(llibre):
+        titol = llibre.titol.lower()
+        autor = llibre.autor.lower()
+
+        #Coincidencia exacta va primero
+        if titol == text_lower or autor == text_lower:
+            return (0, 0)
+
+        # luego prioriza coincidencia por posición
+        titol_index = titol.find(text_lower)
+        autor_index = autor.find(text_lower)
+
+        titol_score = titol_index if titol_index != -1 else 999
+        autor_score = autor_index if autor_index != -1 else 999
+
+        return (1, min(titol_score, autor_score))
+
+    llibres = sorted(llibres, key=relevance_key)
     return llibres
 
 @api.get("/llibres/{llibre_id}", response=LlibreDetailOut)
