@@ -133,10 +133,10 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')  # This will create a 'media' folde
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:8000",
-    "https://biblioteca3.ieti.site",
-]
-
-CORS_ALLOW_ALL_ORIGINS = False
+if env("CORS_ALLOWED_ORIGINS", default="") == "":
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    CORS_ALLOW_ALL_ORIGINS = False
+    CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS")
+    
 CORS_ALLOW_CREDENTIALS = True
