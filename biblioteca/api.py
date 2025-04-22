@@ -1,18 +1,17 @@
 from django.contrib.auth import authenticate
-from ninja import NinjaAPI, Schema, File, Form
+from ninja import NinjaAPI, Schema, File, Form, Query
 from ninja.files import UploadedFile
 from ninja.errors import HttpError
 from ninja.responses import Response
 from ninja.security import HttpBasicAuth, HttpBearer
 from django.http import HttpRequest
 from .models import *
-from typing import List, Optional, Union, Literal
+from typing import List, Optional, Union,  Dict, Any
 import re  # For email validation
 import io  # For handling in-memory file operations
 import csv  # For CSV file handling
-from ninja import Router
-from typing import List
 import secrets
+from math import ceil
 
 api = NinjaAPI()
 
@@ -148,8 +147,8 @@ def get_llibres(request):
     qs = Llibre.objects.all()
     return qs
 
-@api.get("/llibres/search", response=List[LlibreOut]) 
-def search_llibres(request, text: str):
+@api.get("/llibres/search", response=Dict[str, Any])
+def search_llibres(request, text: str, page: int = Query(1)):
     text_lower = text.lower()
 
     # busca titulo y autor (sin duplicados)
@@ -161,11 +160,9 @@ def search_llibres(request, text: str):
         titol = llibre.titol.lower()
         autor = llibre.autor.lower()
 
-        #Coincidencia exacta va primero
         if titol == text_lower or autor == text_lower:
             return (0, 0)
 
-        # luego prioriza coincidencia por posición
         titol_index = titol.find(text_lower)
         autor_index = autor.find(text_lower)
 
@@ -174,8 +171,28 @@ def search_llibres(request, text: str):
 
         return (1, min(titol_score, autor_score))
 
-    llibres = sorted(llibres, key=relevance_key)
-    return llibres
+    llibres_sorted = sorted(llibres, key=relevance_key)
+
+    # Pagination logic
+    items_per_page = 10
+    total_items = len(llibres_sorted)
+    total_pages = ceil(total_items / items_per_page)
+
+    if page < 1:
+        page = 1
+        
+    if page > total_pages:
+        page = total_pages
+
+    start = (page - 1) * items_per_page
+    end = start + items_per_page
+    llibres_paginated = llibres_sorted[start:end]
+
+    return {
+        "current_page": page,
+        "total_pages": total_pages,
+        "results": [LlibreOut.from_orm(llibre) for llibre in llibres_paginated]
+    }
 
 @api.get("/llibres/{llibre_id}", response=LlibreDetailOut)
 def get_llibre_by_id(request, llibre_id: int):
