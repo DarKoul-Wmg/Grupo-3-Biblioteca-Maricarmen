@@ -43,6 +43,9 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    #app libraries para el autcompletado de django
+    'dal',
+    'dal_select2',
 ]
 
 MIDDLEWARE = [

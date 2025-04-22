@@ -25,4 +25,6 @@ urlpatterns = [
     path('', views.index),
     path('admin/', admin.site.urls),
     path("api/", api.urls),
+    path('autor-autocomplete/', views.AutorAutocomplete.as_view(), name='autor-autocomplete'),
+    path('editorial-autocomplete/', views.EditorialAutocomplete.as_view(), name='editorial-autocomplete'),
 ]
