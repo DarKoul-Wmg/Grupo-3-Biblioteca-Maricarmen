@@ -1,17 +1,17 @@
 from django.contrib.auth import authenticate
-from ninja import NinjaAPI, Schema, File, Form
+from ninja import NinjaAPI, Schema, File, Form, Query
 from ninja.files import UploadedFile
 from ninja.errors import HttpError
 from ninja.responses import Response
 from ninja.security import HttpBasicAuth, HttpBearer
 from django.http import HttpRequest
 from .models import *
-from typing import List, Optional, Union, Literal
+from typing import List, Optional, Union,  Dict, Any
 import re  # For email validation
 import io  # For handling in-memory file operations
 import csv  # For CSV file handling
-
 import secrets
+from math import ceil
 
 api = NinjaAPI()
 
@@ -151,11 +151,52 @@ def get_llibres(request):
     qs = Llibre.objects.all()
     return qs
 
-@api.get("/llibres/search", response=List[LlibreOut])
-def search_llibres(request, text: str):
+@api.get("/llibres/search", response=Dict[str, Any])
+def search_llibres(request, text: str, page: int = Query(1)):
+    text_lower = text.lower()
+
+    # busca titulo y autor (sin duplicados)
     llibres = Llibre.objects.filter(titol__icontains=text) | Llibre.objects.filter(autor__icontains=text)
     llibres = llibres.distinct()
-    return llibres
+
+    # Ordena por coincidencia exacta primero, luego por posicion de la coincidencia
+    def relevance_key(llibre):
+        titol = llibre.titol.lower()
+        autor = llibre.autor.lower()
+
+        if titol == text_lower or autor == text_lower:
+            return (0, 0)
+
+        titol_index = titol.find(text_lower)
+        autor_index = autor.find(text_lower)
+
+        titol_score = titol_index if titol_index != -1 else 999
+        autor_score = autor_index if autor_index != -1 else 999
+
+        return (1, min(titol_score, autor_score))
+
+    llibres_sorted = sorted(llibres, key=relevance_key)
+
+    # Pagination logic
+    items_per_page = 10
+    total_items = len(llibres_sorted)
+    total_pages = ceil(total_items / items_per_page)
+
+    if page < 1:
+        page = 1
+        
+    if page > total_pages:
+        page = total_pages
+
+    start = (page - 1) * items_per_page
+    end = start + items_per_page
+    llibres_paginated = llibres_sorted[start:end]
+
+    return {
+        "current_page": page,
+        "total_pages": total_pages,
+        "results": [LlibreOut.from_orm(llibre) for llibre in llibres_paginated]
+    }
 
 @api.get("/llibres/{llibre_id}", response=LlibreDetailOut)
 def get_llibre_by_id(request, llibre_id: int):
@@ -312,7 +353,7 @@ def update_profile(request: HttpRequest,                  # Access request for a
     return api.create_response(request, {"type": "no_change", "detail": "No changes made."}, status=200)
 
 
-@api.post("/import-users/")
+@api.post("/importUsersFromCsv/")
 def import_users(request, file: UploadedFile = File(...)):
     # Verifiquem que hi hagi un fitxer i que sigui CSV
     if not file:
@@ -336,12 +377,10 @@ def import_users(request, file: UploadedFile = File(...)):
         }, status=400)
 
     imported_count = 0
-    imported_error_count = 0
-    errors = []
-    warnings = []
+    resultsMessage = []
+    resultsStatus = []
 
     for index, row in enumerate(reader, start=1):
-        error = False
         # Agafem les dades crues
         nom_raw = row.get("nom")
         cognom1_raw = row.get("cognom1")
@@ -353,61 +392,69 @@ def import_users(request, file: UploadedFile = File(...)):
 
         # Comprovem que cap sigui None o buit
         if not all([nom_raw, cognom1_raw, cognom2_raw, email_raw, telefon_raw, centre_val_raw, grup_val_raw]):
-            error = True
-        else:
-            # Netegem els valors
-            nom = nom_raw.strip()
-            cognom1 = cognom1_raw.strip()
-            cognom2 = cognom2_raw.strip()
-            email = email_raw.strip()
-            telefon = telefon_raw.strip()
-            centre_val = centre_val_raw.strip()
-            grup_val = grup_val_raw.strip()
-
-            last_name = f"{cognom1} {cognom2}"
-
-            try:
-                centre_obj = Centre.objects.get(nom=centre_val)
-            except Centre.DoesNotExist:
-                print(f"Centre '{centre_val}' no trobat (línia {index})")
-                error = True
-
-            try:
-                cicle_obj = Cicle.objects.get(nom=grup_val)
-            except Cicle.DoesNotExist:
-                print(f"Cicle '{grup_val}' no trobat (línia {index})")
-                error = True
-
-            if not error:
-                username = email
-                user, created = Usuari.objects.get_or_create(
-                    username=username,
-                    defaults={
-                        "email": email,
-                        "first_name": nom,
-                        "last_name": last_name,
-                        "telefon": telefon,
-                        "centre": centre_obj,
-                        "cicle": cicle_obj,
-                    }
-                )
-
-                if not created:
-                    warnings.append(index)
-                    continue
-        
-        if error:
-            errors.append(index)
-            imported_error_count += 1
+            resultsMessage.append(
+                f"Fila {index}: Tots els camps són obligatoris (nom, cognom1, cognom2, email, telefon, centre, grup)."
+            )
+            resultsStatus.append("error")
             continue
-            
+
+        # Netegem els valors
+        nom = nom_raw.strip()
+        cognom1 = cognom1_raw.strip()
+        cognom2 = cognom2_raw.strip()
+        email = email_raw.strip()
+        telefon = telefon_raw.strip()
+        centre_val = centre_val_raw.strip()
+        grup_val = grup_val_raw.strip()
+
+        last_name = f"{cognom1} {cognom2}"
+
+        try:
+            centre_obj = Centre.objects.get(nom=centre_val)
+        except Centre.DoesNotExist:
+            resultsMessage.append(f"Fila {index}: Centre amb ID '{centre_val}' no trobat.")
+            resultsStatus.append("error")
+            continue
+
+        try:
+            cicle_obj = Cicle.objects.get(nom=grup_val)
+        except Cicle.DoesNotExist:
+            resultsMessage.append(f"Fila {index}: Cicle (grup) amb ID '{grup_val}' no trobat.")
+            resultsStatus.append("error")
+            continue
+
+        username = email.split('@')[0]
+
+        user, created = Usuari.objects.get_or_create(
+            username=username,
+            defaults={
+                "email": email,
+                "first_name": nom,
+                "last_name": last_name,
+                "telefon": telefon,
+                "centre": centre_obj,
+                "cicle": cicle_obj,
+            }
+        )
+
+        if not created:
+            resultsMessage.append(f"Fila {index}: L'usuari amb l'email '{email}' ja existeix.")
+            resultsStatus.append("warning")
+            continue
+        else:
+            resultsMessage.append(f"Fila {index}: Usuari '{username}' creat correctament.")
+            resultsStatus.append("success")
         imported_count += 1
         
-    print(errors)
+    error_count = resultsStatus.count("error")
+    warning_count = resultsStatus.count("warning")
     summary = {
-        "ok": f"Se han importat {imported_count} entrades correctament",
-        "error": f"Han fallat {imported_error_count} registres, revisa las lineas {', '.join(map(str, errors))}",
-        "warning": f"Les entrades {', '.join(map(str, warnings))} ja existeixen a la base de dades"
+        "imported": imported_count,
+        "errorCount": error_count,
+        "warningCount": warning_count,
+        "resultsMessage": resultsMessage,
+        "resultsStatus": resultsStatus,
+        "message": "success"
     }
 
     return summary
