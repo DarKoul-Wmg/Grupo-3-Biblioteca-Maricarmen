@@ -29,8 +29,12 @@ class BasicAuth(HttpBasicAuth):
                 user.auth_token = token
                 user.save()
                 return token
+            return user
         except Usuari.DoesNotExist:
             return None
+        except Exception as e:
+            raise HttpError(500, "Ha ocurrido un error al autenticar el usuario.")
+
 
 # Autenticació per Token Bearer
 class AuthBearer(HttpBearer):
