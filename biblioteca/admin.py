@@ -4,6 +4,7 @@ from django.utils.html import escape, mark_safe
 
 
 from .models import *
+from .forms import LlibreForm
 
 class CategoriaAdmin(admin.ModelAdmin):
 	list_display = ('nom','parent')
@@ -59,6 +60,7 @@ class ExemplarsInline(admin.TabularInline):
 		return fields
 
 class LlibreAdmin(admin.ModelAdmin):
+	form = LlibreForm
 	filter_horizontal = ('tags',)
 	inlines = [ExemplarsInline,]
 	search_fields = ('titol','autor','CDU','signatura','ISBN','editorial','colleccio')
