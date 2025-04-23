@@ -5,8 +5,10 @@ from ninja.errors import HttpError
 from ninja.responses import Response
 from ninja.security import HttpBasicAuth, HttpBearer
 from django.http import HttpRequest
+from django.db.models import Q
+
 from .models import *
-from typing import List, Optional, Union,  Dict, Any
+from typing import List, Optional, Union, Dict, Any
 import re  # For email validation
 import io  # For handling in-memory file operations
 import csv  # For CSV file handling
@@ -197,6 +199,65 @@ def search_llibres(request, text: str, page: int = Query(1)):
         "total_pages": total_pages,
         "results": [LlibreOut.from_orm(llibre) for llibre in llibres_paginated]
     }
+    
+@api.get("/catalegs/search", response=Dict[str, Any])
+def search_catalegs(request, text: str, page: int = Query(1)):
+    text_lower = text.lower()
+    query = Q(titol__icontains=text) | Q(autor__icontains=text)
+
+    all_results = []
+    for model in [Llibre, Revista, CD, DVD, BR, Dispositiu]:
+        results = list(model.objects.filter(query).distinct())
+        all_results.extend(results)
+
+    def relevance_key(obj):
+        titol = obj.titol.lower()
+        autor = obj.autor.lower() if hasattr(obj, "autor") and obj.autor else ""
+        if titol == text_lower or autor == text_lower:
+            return (0, 0)
+
+        titol_index = titol.find(text_lower)
+        autor_index = autor.find(text_lower)
+
+        titol_score = titol_index if titol_index != -1 else 999
+        autor_score = autor_index if autor_index != -1 else 999
+
+        return (1, min(titol_score, autor_score))
+
+    sorted_results = sorted(all_results, key=relevance_key)
+
+    items_per_page = 10
+    total_items = len(sorted_results)
+    total_pages = ceil(total_items / items_per_page)
+
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * items_per_page
+    end = start + items_per_page
+    paginated = sorted_results[start:end]
+
+    def serialize(obj):
+        base_data = {
+            "id": obj.id,
+            "titol": obj.titol,
+            "autor": getattr(obj, "autor", None),
+            "type": obj.__class__.__name__,
+        }
+
+        if isinstance(obj, Llibre):
+            schema_data = LlibreOut.from_orm(obj).dict()
+        else:
+            schema_data = CatalegOut.from_orm(obj).dict()
+
+        return {
+            **base_data,
+            **schema_data
+        }
+
+    return {
+        "current_page": page,
+        "total_pages": total_pages,
+        "results": [serialize(o) for o in paginated]
+    }
 
 @api.get("/llibres/{llibre_id}", response=LlibreDetailOut)
 def get_llibre_by_id(request, llibre_id: int):
@@ -236,6 +297,103 @@ def get_llibre_by_id(request, llibre_id: int):
         return data
     except Llibre.DoesNotExist:
         raise HttpError(404, "Llibre not found")
+    
+@api.get("/catalog/{model_type}/{item_id}", response=Dict)
+def get_catalog_item(request, model_type: str, item_id: int):
+    # Define a dictionary of model types for quick lookup
+    model_map = {
+        'Llibre': Llibre,
+        'Revista': Revista,
+        'CD': CD,
+        'DVD': DVD,
+        'BR': BR,
+        'Dispositiu': Dispositiu,
+    }
+
+    # Check if the model_type is valid
+    if model_type not in model_map:
+        raise HttpError(400, "Invalid model type")
+
+    # Get the model class based on the model_type
+    model_class = model_map[model_type]
+
+    try:
+        # Retrieve the item by ID from the corresponding model
+        item = model_class.objects.get(id=item_id)
+
+        # Retrieve Exemplars associated with this item
+        exemplars = list(Exemplar.objects.select_related("centre").filter(cataleg=item))
+
+        # Prepare the response data
+        data = {
+            "id": item.id,
+            "titol": item.titol,
+            "autor": item.autor,
+            "resum": item.resum,
+            "model_type": model_type,  # Adding model type in the response
+        }
+
+        # Add model-specific fields to the response
+        if isinstance(item, Llibre):
+            data["ISBN"] = item.ISBN
+            data["editorial"] = item.editorial
+            data["colleccio"] = item.colleccio
+            data["lloc"] = item.lloc
+            data["pais"] = str(item.pais) if item.pais else None
+            data["llengua"] = str(item.llengua) if item.llengua else None
+            data["numero"] = item.numero
+            data["volums"] = item.volums
+            data["pagines"] = item.pagines
+            data["info_url"] = item.info_url
+            data["preview_url"] = item.preview_url
+            data["thumbnail_url"] = item.thumbnail_url
+
+        elif isinstance(item, Revista):
+            data["ISSN"] = item.ISSN
+            data["editorial"] = item.editorial
+            data["lloc"] = item.lloc
+            data["pais"] = str(item.pais) if item.pais else None
+            data["llengua"] = str(item.llengua) if item.llengua else None
+            data["numero"] = item.numero
+            data["volums"] = item.volums
+            data["pagines"] = item.pagines
+
+        elif isinstance(item, CD):
+            data["discografica"] = item.discografica
+            data["estil"] = item.estil
+            data["duracio"] = item.duracio
+
+        elif isinstance(item, DVD):
+            data["productora"] = item.productora
+            data["duracio"] = item.duracio
+
+        elif isinstance(item, BR):
+            data["productora"] = item.productora
+            data["duracio"] = item.duracio
+
+        elif isinstance(item, Dispositiu):
+            data["marca"] = item.marca
+            data["model"] = item.model
+
+        # Add Exemplars to the response data
+        data["exemplars"] = [
+            {
+                "id": ex.id,
+                "registre": ex.registre,
+                "exclos_prestec": ex.exclos_prestec,
+                "baixa": ex.baixa,
+                "centre": {
+                    "nom": ex.centre.nom if ex.centre else None
+                }
+            }
+            for ex in exemplars
+        ]
+
+        # Return the data directly (assuming the response handler knows how to return it as JSON)
+        return data
+
+    except model_class.DoesNotExist:
+        raise HttpError(404, f"{model_type} with id {item_id} not found")
 
 
 @api.post("/llibres/")

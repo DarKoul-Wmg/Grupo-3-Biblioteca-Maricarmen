@@ -52,15 +52,9 @@
           dataType: "json",   // necessitem això pq ens retorni un objecte JSON
         }).done(function (msg) {
             var llibre = msg["ISBN:"+isbn];
-            if( !llibre ) {
-                console.log("No s'ha trobat l'ISBN");
-                alert("No s'ha trobat l'ISBN");
-                return;
-            }
-            console.log(msg);
-            if( !llibre.details ) {
-                console.log("No s'ha trobat detalls del llibre");
-                alert("No s'ha trobat detalls del llibre");
+            if (!llibre || !llibre.details) {
+                console.warn("Open Library no ha retornat detalls. Provant Google Books...");
+                carrega_info_isbn_de_google_books(isbn); // Fallback
                 return;
             }
 
@@ -89,7 +83,39 @@
             }*/
 
         }).fail(function () {
-            alert("Error en carregar la informació de l'ISBN");
+            console.warn("Error en Open Library. Provant Google Books...");
+            carrega_info_isbn_de_google_books(isbn); // Fallback
+        });
+    }
+
+    function carrega_info_isbn_de_google_books(isbn) {      
+        $.ajax({
+          method: "GET",
+          url: `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`,
+          dataType: "json",
+        }).done(function (response) {
+            if (!response.items || response.items.length === 0) {
+                alert("No s'ha trobat l'ISBN a cap servei.");
+                return;
+            }
+        
+            const book = response.items[0].volumeInfo;
+        
+            $('#id_ISBN').val(isbn);
+            if (book.title) $('#id_titol').val(book.title);
+            if (book.authors) $('#id_autor').val(book.authors[0]);
+            if (book.publisher) $('#id_editorial').val(book.publisher);
+            if (book.publishedDate) {
+                const [year, month = 1, day = 1] = book.publishedDate.split("-").map(Number);
+                const data = `${day}/${month}/${year}`;
+                $('#id_data_edicio').val(data);
+            }
+            if (book.pageCount) $('#id_pagines').val(book.pageCount);
+            if (book.description) $('#id_resum').val(book.description);
+            if (book.imageLinks?.thumbnail) $('#id_thumbnail_url').val(book.imageLinks.thumbnail);
+            if (book.infoLink) $('#id_info_url').val(book.infoLink);
+        }).fail(function () {
+          alert("Error en carregar la informació de l'ISBN");
         });
     }
 
