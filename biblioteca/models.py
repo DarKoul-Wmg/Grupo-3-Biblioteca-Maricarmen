@@ -112,14 +112,14 @@ class Centre(models.Model):
     def __str__(self):
         return self.nom
 
-class Cicle(models.Model):
+class Grup(models.Model):
     nom = models.CharField(max_length=200)
     def __str__(self):
         return self.nom
 
 class Usuari(AbstractUser):
     centre = models.ForeignKey(Centre,on_delete=models.SET_NULL,null=True,blank=True)
-    cicle = models.ForeignKey(Cicle,on_delete=models.SET_NULL,null=True,blank=True)
+    grup = models.ForeignKey(Grup,on_delete=models.SET_NULL,null=True,blank=True)
     imatge = models.ImageField(upload_to='usuaris/',null=True,blank=True)
     auth_token = models.CharField(max_length=32,blank=True,null=True)
     telefon = models.CharField(
@@ -143,7 +143,7 @@ class Prestec(models.Model):
         verbose_name_plural = "Préstecs"
     usuari = models.ForeignKey(Usuari, on_delete=models.CASCADE)
     exemplar = models.ForeignKey(Exemplar, on_delete=models.CASCADE)
-    data_prestec = models.DateField(auto_now_add=True)
+    data_prestec = models.DateField(null=True, blank=True)
     data_retorn = models.DateField(null=True, blank=True)
     anotacions = models.TextField(blank=True,null=True)
     def __str__(self):

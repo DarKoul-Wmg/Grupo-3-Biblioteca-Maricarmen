@@ -4,24 +4,26 @@ from faker import Faker
 from datetime import timedelta
 from django.utils.timezone import now
 from django.core.management.base import BaseCommand
+from django.contrib.auth.models import Group  # Importa el modelo Group
+
 
 
 from biblioteca.models import (
     Categoria, Pais, Llengua, Cataleg, Llibre, Revista, CD, DVD, BR, Dispositiu,
-    Exemplar, Centre, Cicle, Usuari, Reserva, Prestec
+    Exemplar, Centre, Grup, Usuari, Reserva, Prestec
 )
 
 # ========== CONFIG ==========
 
-NUM_LIBROS = 500
-NUM_AUTORES = 75
-MAX_EJEMPLARES_POR_LIBRO = 10
-NUM_USUARIS = 50
-NUM_CENTRES = 3
-NUM_CICLES = 9
+NUM_LLIBRES = 600
+NUM_AUTORS = 100
+MAX_EJEMPLARS_PER_LLIBRE = 10
+NUM_USUARIS = 100
+NUM_CENTRES = 7
+NUM_GRUPS = 15
 
 NUM_PAISOS = 5
-NUM_CATEGORIES = 10
+NUM_CATEGORIES = 20
 NUM_RESERVES = 100
 NUM_PRESTECS = 150
 
@@ -45,9 +47,9 @@ def get_faker():
 
 def crear_centres():
     centres = []
-    for i in range(NUM_CENTRES):
+    for i in range(NUM_CENTRES - 1):
         fake = get_faker()
-        nom_centre = f"IES {fake.first_name()} {fake.last_name()}"
+        nom_centre = f"{fake.first_name()} {fake.last_name()}"
         centre = Centre.objects.create(nom=nom_centre)
         centres.append(centre)
 
@@ -72,14 +74,14 @@ def crear_categories():
         categories.append(Categoria.objects.create(nom=get_faker().word()))
     return categories
 
-def crear_cicles():
-    cicles = []
-    for i in range(NUM_CICLES):
+def crear_grups():
+    grups = []
+    for i in range(NUM_GRUPS):
         fake = get_faker()
         nom = f"{fake.word().capitalize()} {fake.word().capitalize()}"
-        cicle = Cicle.objects.create(nom=nom)
-        cicles.append(cicle)
-    return cicles
+        grup = Grup.objects.create(nom=nom)
+        grups.append(grup)
+    return grups
 
 
 
@@ -87,12 +89,19 @@ def crear_cicles():
 def quitar_acentos(texto):
     return ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn')
 
-def crear_usuaris(centres, cicles):
+def crear_usuaris(centres, grups):
+    #obtiene el grupo del admin panel para asingar a todos los usuarios por defecto al grupo Usuaris
+    grup_usuaris, created = Group.objects.get_or_create(name="Usuari")
+    if created:
+        print("Grup 'Usuari' s'ha creat")
+    else:
+        print("Grup 'Usuaris' ja existeix.")
+
     usuaris = []
     for _ in range(NUM_USUARIS):
         fake = get_faker()
         centre = random.choice(centres)
-        cicle = random.choice(cicles)
+        grup = random.choice(grups)
 
         # primeras dos iniciales + apellido
         nom_propi = fake.first_name()
@@ -112,9 +121,13 @@ def crear_usuaris(centres, cicles):
             first_name=nom_propi,
             last_name=cognom,
             centre=centre,
-            cicle=cicle,  
+            grup=grup,  
             telefon=fake.random_number(digits=9)
         )
+
+        #asignar al usuario al grupo correspondiente:
+        user.groups.add(grup_usuaris)
+
         usuaris.append(user)
     return usuaris
 
@@ -127,7 +140,7 @@ def crear_llibres(autors, llengues, paisos, categories):
 
     titols_generats = set()
 
-    for i in range(NUM_LIBROS):
+    for i in range(NUM_LLIBRES):
         fake = get_faker()
 
         # Evitar títulos duplicados
@@ -140,6 +153,8 @@ def crear_llibres(autors, llengues, paisos, categories):
 
         autor_idx = i % len(autors)
         autor = autors[autor_idx]
+
+        cdu = f"{random.randint(10, 999)}.{random.randint(1, 99)}"  # Ejemplo de formato CDU
 
         llibre = Llibre.objects.create(
             titol=titol,
@@ -156,6 +171,7 @@ def crear_llibres(autors, llengues, paisos, categories):
             anotacions=fake.sentence(),
             ISBN=fake.isbn13().replace("-", ""),
             data_edicio=fake.date_between(start_date='-10y', end_date='today'),
+            CDU=cdu,
         )
         llibre.tags.set(random.sample(categories, k=random.randint(1, 3)))
         llibres.append(llibre)
@@ -165,7 +181,7 @@ def crear_llibres(autors, llengues, paisos, categories):
 def crear_exemplars(llibres, centres):
     exemplars = []
     for llibre in llibres:
-        for _ in range(random.randint(1, MAX_EJEMPLARES_POR_LIBRO)):
+        for _ in range(random.randint(1, MAX_EJEMPLARS_PER_LLIBRE)):
             exemplar = Exemplar.objects.create(
                 cataleg=llibre,
                 registre=f"{get_faker().ean(length=13)}",
@@ -188,12 +204,20 @@ def crear_reserves_i_presteus(usuaris, exemplars):
     for _ in range(NUM_PRESTECS):
         user = random.choice(usuaris)
         exemplar = random.choice(exemplars)
+
+        # Seleccionar una fecha de préstamo entre hoy y 30 días antes
         data_prestec = now() - timedelta(days=random.randint(0, 30))
+
+        # La fecha de retorno será exactamente 7 días después de la fecha de préstamo
+        data_retorn = data_prestec + timedelta(days=7)
+        # print(f"Data préstec: {data_prestec}, Data retorn: {data_retorn}")  # Depuración
+
+        # Crear el préstamo
         Prestec.objects.create(
             usuari=user,
             exemplar=exemplar,
             data_prestec=data_prestec,
-            data_retorn=(data_prestec + timedelta(days=random.randint(1, 15))) if random.random() < 0.7 else None,
+            data_retorn=data_retorn,
             anotacions=get_faker().sentence()
         )
 
@@ -242,7 +266,7 @@ def crear_altres_catalegs(llengues, paisos, categories):
 # ========== COMANDO DE DJANGO ==========
 
 class Command(BaseCommand):
-    help = 'Crea datos de prueba para la base de datos'
+    help = 'Genera dades de prova per a la biblioteca'
 
     def handle(self, *args, **kwargs):
         print("Creando datos de prueba...")
@@ -250,39 +274,39 @@ class Command(BaseCommand):
         Prestec.objects.all().delete()
         Exemplar.objects.all().delete()
         Cataleg.objects.all().delete()
-        Cicle.objects.all().delete()
+        Grup.objects.all().delete()
         Centre.objects.all().delete()
         Usuari.objects.exclude(is_superuser=True).delete()
-        print("Datos anteriores borrados con exito")
+        print("Dades anteriors esborrades")
 
         centres = crear_centres()
-        print("Centros generados")
+        print("Centres generats")
         llengues, paisos = crear_llengues_i_paisos()
-        print("Lenguas y paises generados")
+        print("Llengües i països generats")
 
         categories = crear_categories()
-        print("Categorias generadas")
+        print("Categories generades")
 
-        cicles = crear_cicles()
-        print("Ciclos generados")
+        grups = crear_grups()
+        print("Grups generats")
 
-        usuaris = crear_usuaris(centres, cicles)
-        print("Usuarios comunes generados")
+        usuaris = crear_usuaris(centres, grups)
+        print("Usuaris generats")
 
-        autors = crear_autors(NUM_AUTORES)
-        print("Autores")
+        autors = crear_autors(NUM_AUTORS)
+        print("Autors generats")
 
         llibres = crear_llibres(autors, llengues, paisos, categories)
-        print("Libros generados")
+        print("Llibres generats")
 
         exemplars = crear_exemplars(llibres, centres)
-        print("Ejemplares generados")
+        print("Exemplars generats")
 
         crear_reserves_i_presteus(usuaris, exemplars)
-        print("Reservas y prestamos generados")
+        print("Reserves i presteus generats")
 
         crear_altres_catalegs(llengues, paisos, categories)
-        print("Otros catalogos generados")
+        print("Altres catàlegs generats")
 
 
-        self.stdout.write(self.style.SUCCESS("✅ Datos creados correctamente."))
+        self.stdout.write(self.style.SUCCESS("✅ Dades creades correctament."))
