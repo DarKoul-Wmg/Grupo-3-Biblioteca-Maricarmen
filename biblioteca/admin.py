@@ -82,7 +82,6 @@ admin.site.register(Dispositiu)
 admin.site.register(Imatge)
 
 class PrestecAdmin(admin.ModelAdmin):
-    readonly_fields = ('data_prestec',)
     fields = ('exemplar','usuari','data_prestec','data_retorn','anotacions')
     list_display = ('exemplar','usuari','data_prestec','data_retorn')
 
