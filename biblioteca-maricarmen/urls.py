@@ -30,6 +30,7 @@ urlpatterns = [
     path("api/", api.urls),
     path('autor-autocomplete/', views.AutorAutocomplete.as_view(), name='autor-autocomplete'),
     path('editorial-autocomplete/', views.EditorialAutocomplete.as_view(), name='editorial-autocomplete'),
+    path("media/<path:path>", views.protected_serve, {'document_root': settings.MEDIA_ROOT}),
 ]
 
 
