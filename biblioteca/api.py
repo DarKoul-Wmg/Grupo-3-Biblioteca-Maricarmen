@@ -91,7 +91,31 @@ def get_user_info(request):
         "user-details": user_data.dict(),  # Convertir a dict para incluir en la respuesta
     }
 
+@api.get("/usuaris/{info}")
+def buscar_usuaris(request, info: str):
+    info = info.strip()
 
+    usuaris = Usuari.objects.filter(
+        Q(first_name__icontains=info) |
+        Q(last_name__icontains=info) |
+        Q(email__icontains=info) |
+        Q(telefon__icontains=info) |
+        Q(username__icontains=info)
+    )
+
+    return [
+        {
+            "id": u.id,
+            "first_name": u.first_name,
+            "last_name": u.last_name,
+            "username": u.username,
+            "email": u.email,
+            "telefon": u.telefon,
+            "centre": u.centre.nom if u.centre else None,
+            "cicle": u.cicle.nom if u.cicle else None,
+        }
+        for u in usuaris
+    ]
 
 # Endpoint per obtenir un token
 @api.get("/token", auth=BasicAuth())
@@ -445,6 +469,39 @@ def get_exemplars(request):
         )
 
     return result
+
+@api.post("/prestecs/")
+def crear_prestec(request):
+    data = request.json
+    usuari_id = data.get("usuari_id")
+    exemplar_id = data.get("exemplar_id")
+    anotacions = data.get("anotacions", "")
+
+    if not usuari_id or not exemplar_id:
+        raise HttpError(400, "Falten dades obligatòries")
+
+    try:
+        usuari = Usuari.objects.get(id=usuari_id)
+        exemplar = Exemplar.objects.get(id=exemplar_id)
+    except Usuari.DoesNotExist:
+        raise HttpError(404, "Usuari no trobat")
+    except Exemplar.DoesNotExist:
+        raise HttpError(404, "Exemplar no trobat")
+
+    prestec = Prestec.objects.create(
+        usuari=usuari,
+        exemplar=exemplar,
+        anotacions=anotacions,
+        data_prestec=date.today()
+    )
+
+    return {
+        "id": prestec.id,
+        "usuari": f"{usuari.first_name} {usuari.last_name}",
+        "exemplar": str(exemplar),
+        "data_prestec": prestec.data_prestec,
+        "anotacions": prestec.anotacions,
+    }
 
 class UsuariUpdateOut(Schema):
     username: str
