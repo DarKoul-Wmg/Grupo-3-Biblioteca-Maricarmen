@@ -154,7 +154,7 @@ def crear_llibres(autors, llengues, paisos, categories):
             pagines=random.randint(100, 500),
             resum=fake.paragraph(),
             anotacions=fake.sentence(),
-            ISBN=fake.isbn13(),
+            ISBN=fake.isbn13().replace("-", ""),
             data_edicio=fake.date_between(start_date='-10y', end_date='today'),
         )
         llibre.tags.set(random.sample(categories, k=random.randint(1, 3)))
@@ -205,7 +205,7 @@ def crear_altres_catalegs(llengues, paisos, categories):
             autor=fake.name(),
             llengua=random.choice(llengues),
             pais=random.choice(paisos),
-            ISSN=fake.isbn13(),
+            ISSN=fake.isbn13().replace("-", ""),
             editorial=fake.company(),
             data_edicio=fake.date_this_century(),
         )
