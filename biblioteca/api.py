@@ -93,8 +93,20 @@ def get_user_info(request):
         "user-details": user_data.dict(),  # Convertir a dict para incluir en la respuesta
     }
 
-@api.get("/usuaris/{info}")
+@api.get("/usuaris/{info}", auth=AuthBearer())
 def buscar_usuaris(request, info: str):
+    user = request.auth  # Usuario autenticado por el token
+
+    if not user:
+        raise HttpError(401, "Unauthorized")
+    
+    # Check if the user is in either the 'Administrador' or 'Bibliotecari' group
+    allowed_groups = ['Administrador', 'Bibliotecari']
+    user_groups = list(user.groups.values_list("name", flat=True))
+    
+    if not any(group in allowed_groups for group in user_groups):
+        raise HttpError(403, "Forbidden: You do not have permission to access this resource")
+    
     info = info.strip()
 
     usuaris = Usuari.objects.annotate(
@@ -118,6 +130,7 @@ def buscar_usuaris(request, info: str):
             "telefon": u.telefon,
             "centre": u.centre.nom if u.centre else None,
             "grup": u.grup.nom if u.grup else None,
+            "user_groups": list(u.groups.values_list("name", flat=True))  # Using values_list to get group names
         }
         for u in usuaris
     ]
@@ -508,6 +521,26 @@ def crear_prestec(request, usuari_id: int, exemplar_id: int, anotacions: str = "
 
     except Exception as e:
         raise HttpError(500, f"Error en crear el préstec: {str(e)}")
+
+@api.get("/prestecs/historial", auth=AuthBearer())  # Bearer token authentication
+def get_prestecs(request):
+    user = request.auth  # The authenticated user is now available in request.auth
+    if not user:
+        return {"error": "Unauthorized"}, 401  # Return a 401 Unauthorized if no user is authenticated
+
+    prestecs = Prestec.objects.filter(usuari=user)  # Filter the Prestec records for the authenticated user
+
+    return [
+        {
+            "id": prestec.id,
+            "usuari": f"{prestec.usuari.first_name} {prestec.usuari.last_name}",
+            "exemplar": str(prestec.exemplar),
+            "data_prestec": prestec.data_prestec,
+            "data_retorn": prestec.data_retorn,
+            "anotacions": prestec.anotacions,
+        }
+        for prestec in prestecs
+    ]
 
 class UsuariUpdateOut(Schema):
     username: str
