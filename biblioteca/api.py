@@ -327,7 +327,7 @@ def get_llibre_by_id(request, llibre_id: int):
     except Llibre.DoesNotExist:
         raise HttpError(404, "Llibre not found")
     
-@api.get("/catalog/{model_type}/{item_id}", response=Dict)
+@api.get("/catalegs/{model_type}/{item_id}", response=Dict)
 def get_catalog_item(request, model_type: str, item_id: int):
     # Define a dictionary of model types for quick lookup
     model_map = {
