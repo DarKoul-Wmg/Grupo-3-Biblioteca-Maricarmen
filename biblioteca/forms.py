@@ -5,14 +5,24 @@ from .models import Llibre
 class LlibreForm(forms.ModelForm):
     autor = forms.CharField(
         widget=autocomplete.Select2(
-            url='autor-autocomplete'
+            url='autor-autocomplete',
+            attrs={
+                'data-placeholder': 'Escriu o selecciona un autor...',
+                'data-allow-clear': 'true',
+                'data-tags': 'true',  # Permite crear nuevos valores
+            }
         ),
         required=False,
         label="Autor"
     )
     editorial = forms.CharField(
         widget=autocomplete.Select2(
-            url='editorial-autocomplete'
+            url='editorial-autocomplete',
+            attrs={
+                'data-placeholder': 'Escriu o selecciona una editorial...',
+                'data-allow-clear': 'true',
+                'data-tags': 'true',
+            }
         ),
         required=False,
         label="Editorial"
