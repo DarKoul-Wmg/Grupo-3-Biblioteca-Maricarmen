@@ -591,7 +591,7 @@ def import_users(request, file: UploadedFile = File(...)):
                 "last_name": last_name,
                 "telefon": telefon,
                 "centre": centre_obj,
-                "cicle": grup_obj,
+                "grup": grup_obj,
             }
         )
 
