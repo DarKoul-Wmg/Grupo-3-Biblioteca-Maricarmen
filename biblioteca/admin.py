@@ -22,7 +22,7 @@ class UsuariAdmin(UserAdmin):
 
     fieldsets += (
         ("Dades acadèmiques", {
-            'fields': ('centre', 'cicle', 'imatge'),
+            'fields': ('centre', 'grup', 'imatge'),
         }),
     )
 
@@ -82,12 +82,11 @@ admin.site.register(Dispositiu)
 admin.site.register(Imatge)
 
 class PrestecAdmin(admin.ModelAdmin):
-    readonly_fields = ('data_prestec',)
     fields = ('exemplar','usuari','data_prestec','data_retorn','anotacions')
     list_display = ('exemplar','usuari','data_prestec','data_retorn')
 
 admin.site.register(Centre)
-admin.site.register(Cicle)
+admin.site.register(Grup)
 admin.site.register(Reserva)
 admin.site.register(Prestec,PrestecAdmin)
 admin.site.register(Peticio)

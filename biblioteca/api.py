@@ -636,9 +636,9 @@ def import_users(request, file: UploadedFile = File(...)):
             continue
 
         try:
-            cicle_obj = Cicle.objects.get(nom=grup_val)
-        except Cicle.DoesNotExist:
-            resultsMessage.append(f"Fila {index}: Cicle (grup) amb ID '{grup_val}' no trobat.")
+            grup_obj = Grup.objects.get(nom=grup_val)
+        except Grup.DoesNotExist:
+            resultsMessage.append(f"Fila {index}: Grup amb ID '{grup_val}' no trobat.")
             resultsStatus.append("error")
             continue
 
@@ -652,7 +652,7 @@ def import_users(request, file: UploadedFile = File(...)):
                 "last_name": last_name,
                 "telefon": telefon,
                 "centre": centre_obj,
-                "cicle": cicle_obj,
+                "grup": grup_obj,
             }
         )
 
