@@ -15,6 +15,7 @@ import io  # For handling in-memory file operations
 import csv  # For CSV file handling
 import secrets
 from math import ceil
+from datetime import date, timedelta
 
 api = NinjaAPI()
 
@@ -116,7 +117,7 @@ def buscar_usuaris(request, info: str):
             "email": u.email,
             "telefon": u.telefon,
             "centre": u.centre.nom if u.centre else None,
-            "cicle": u.cicle.nom if u.cicle else None,
+            "grup": u.grup.nom if u.grup else None,
         }
         for u in usuaris
     ]
@@ -474,16 +475,8 @@ def get_exemplars(request):
 
     return result
 
-@api.post("/prestecs/")
-def crear_prestec(request):
-    data = request.json
-    usuari_id = data.get("usuari_id")
-    exemplar_id = data.get("exemplar_id")
-    anotacions = data.get("anotacions", "")
-
-    if not usuari_id or not exemplar_id:
-        raise HttpError(400, "Falten dades obligatòries")
-
+@api.post("/prestecs/{usuari_id}/{exemplar_id}")
+def crear_prestec(request, usuari_id: int, exemplar_id: int, anotacions: str = ""):
     try:
         usuari = Usuari.objects.get(id=usuari_id)
         exemplar = Exemplar.objects.get(id=exemplar_id)
@@ -492,20 +485,29 @@ def crear_prestec(request):
     except Exemplar.DoesNotExist:
         raise HttpError(404, "Exemplar no trobat")
 
-    prestec = Prestec.objects.create(
-        usuari=usuari,
-        exemplar=exemplar,
-        anotacions=anotacions,
-        data_prestec=date.today()
-    )
+    try:
+        data_prestec = date.today()
+        data_retorn = data_prestec + timedelta(weeks=1)
 
-    return {
-        "id": prestec.id,
-        "usuari": f"{usuari.first_name} {usuari.last_name}",
-        "exemplar": str(exemplar),
-        "data_prestec": prestec.data_prestec,
-        "anotacions": prestec.anotacions,
-    }
+        prestec = Prestec.objects.create(
+            usuari=usuari,
+            exemplar=exemplar,
+            anotacions=anotacions,
+            data_prestec=data_prestec,
+            data_retorn=data_retorn
+        )
+
+        return {
+            "id": prestec.id,
+            "usuari": f"{usuari.first_name} {usuari.last_name}",
+            "exemplar": str(exemplar),
+            "data_prestec": prestec.data_prestec,
+            "data_retorn": prestec.data_retorn,
+            "anotacions": prestec.anotacions,
+        }
+
+    except Exception as e:
+        raise HttpError(500, f"Error en crear el préstec: {str(e)}")
 
 class UsuariUpdateOut(Schema):
     username: str
