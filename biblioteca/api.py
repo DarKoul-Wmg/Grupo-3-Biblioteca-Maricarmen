@@ -5,7 +5,8 @@ from ninja.errors import HttpError
 from ninja.responses import Response
 from ninja.security import HttpBasicAuth, HttpBearer
 from django.http import HttpRequest
-from django.db.models import Q
+from django.db.models import Q, Value
+from django.db.models.functions import Concat
 
 from .models import *
 from typing import List, Optional, Union, Dict, Any
@@ -95,7 +96,10 @@ def get_user_info(request):
 def buscar_usuaris(request, info: str):
     info = info.strip()
 
-    usuaris = Usuari.objects.filter(
+    usuaris = Usuari.objects.annotate(
+        full_name=Concat('first_name', Value(' '), 'last_name')
+    ).filter(
+        Q(full_name__icontains=info) |
         Q(first_name__icontains=info) |
         Q(last_name__icontains=info) |
         Q(email__icontains=info) |
