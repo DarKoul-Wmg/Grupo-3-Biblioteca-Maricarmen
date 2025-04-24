@@ -47,11 +47,11 @@
 
     function carrega_info_isbn_de_open_library(isbn) {
         $.ajax({
-          method: "GET",
-          url: "https://openlibrary.org/api/books?bibkeys=ISBN:"+isbn+"&jscmd=details&format=json",
-          dataType: "json",   // necessitem això pq ens retorni un objecte JSON
+            method: "GET",
+            url: "https://openlibrary.org/api/books?bibkeys=ISBN:" + isbn + "&jscmd=details&format=json",
+            dataType: "json", // Necessitem això pq ens retorni un objecte JSON
         }).done(function (msg) {
-            var llibre = msg["ISBN:"+isbn];
+            var llibre = msg["ISBN:" + isbn];
             if (!llibre || !llibre.details) {
                 console.warn("Open Library no ha retornat detalls. Provant Google Books...");
                 carrega_info_isbn_de_google_books(isbn); // Fallback
@@ -59,28 +59,35 @@
             }
 
             $('#id_ISBN').val(isbn);
-            if(llibre.info_url) $('#id_info_url').val(llibre.info_url);
-            if(llibre.preview_url) $('#id_preview_url').val(llibre.preview_url);
-            if(llibre.thumbnail_url) $('#id_thumbnail_url').val(llibre.thumbnail_url);
+            if (llibre.info_url) $('#id_info_url').val(llibre.info_url);
+            if (llibre.preview_url) $('#id_preview_url').val(llibre.preview_url);
+            if (llibre.thumbnail_url) $('#id_thumbnail_url').val(llibre.thumbnail_url);
 
             var details = llibre.details;
-            if(details.title) $('#id_titol').val(details.title);
-            if(details.full_title) $('#id_titol').val(details.full_title);
-            if(details.translation_of) $('#id_titol_original').val(details.translation_of);
-            if(details.number_of_pages) $('#id_pagines').val(details.number_of_pages);
-            if(details.publishers) $('#id_editorial').val(details.publishers[0]);
-            if(details.authors) $('#id_autor').val(details.authors[0].name);
-            if(details.publish_date) {
+            if (details.title) $('#id_titol').val(details.title);
+            if (details.full_title) $('#id_titol').val(details.full_title);
+            if (details.translation_of) $('#id_titol_original').val(details.translation_of);
+            if (details.number_of_pages) $('#id_pagines').val(details.number_of_pages);
+
+            // Actualizar el campo de autor
+            if (details.authors && details.authors.length > 0) {
+                const autor = details.authors[0].name || "";
+                $('#id_autor').append(new Option(autor, autor, true, true)).trigger('change'); 
+            }
+
+            // Actualizar el campo de editorial
+            if (details.publishers && details.publishers.length > 0) {
+                const editorial = details.publishers[0] || "";
+                $('#id_editorial').append(new Option(editorial, editorial, true, true)).trigger('change');
+            }
+
+            if (details.publish_date) {
                 let data = new Date(details.publish_date);
-                let data2 = data.getDate()+"/"+(data.getMonth()+1)+"/"+data.getFullYear();
+                let data2 = data.getDate() + "/" + (data.getMonth() + 1) + "/" + data.getFullYear();
                 $('#id_data_edicio').val(data2);
             }
-            if(details.description) $('#id_resum').val(details.description.value);
-            /*if(details.languages) {
-                var lang_code = details.languages[0].key;
 
-                $('#id_autor').val(details.authors[0].name);
-            }*/
+            if (details.description) $('#id_resum').val(details.description.value || details.description);
 
         }).fail(function () {
             console.warn("Error en Open Library. Provant Google Books...");
@@ -90,9 +97,9 @@
 
     function carrega_info_isbn_de_google_books(isbn) {      
         $.ajax({
-          method: "GET",
-          url: `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`,
-          dataType: "json",
+            method: "GET",
+            url: `https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`,
+            dataType: "json",
         }).done(function (response) {
             if (!response.items || response.items.length === 0) {
                 alert("No s'ha trobat l'ISBN a cap servei.");
@@ -103,8 +110,19 @@
         
             $('#id_ISBN').val(isbn);
             if (book.title) $('#id_titol').val(book.title);
-            if (book.authors) $('#id_autor').val(book.authors[0]);
-            if (book.publisher) $('#id_editorial').val(book.publisher);
+
+            // Actualizar el campo de autor
+            if (book.authors && book.authors.length > 0) {
+                const autor = book.authors[0] || "";
+                $('#id_autor').append(new Option(autor, autor, true, true)).trigger('change');
+            }
+
+            // Actualizar el campo de editorial
+            if (book.publisher) {
+                const editorial = book.publisher || "";
+                $('#id_editorial').append(new Option(editorial, editorial, true, true)).trigger('change'); 
+            }
+
             if (book.publishedDate) {
                 const [year, month = 1, day = 1] = book.publishedDate.split("-").map(Number);
                 const data = `${day}/${month}/${year}`;
@@ -115,7 +133,7 @@
             if (book.imageLinks?.thumbnail) $('#id_thumbnail_url').val(book.imageLinks.thumbnail);
             if (book.infoLink) $('#id_info_url').val(book.infoLink);
         }).fail(function () {
-          alert("Error en carregar la informació de l'ISBN");
+            alert("Error en carregar la informació de l'ISBN");
         });
     }
 
