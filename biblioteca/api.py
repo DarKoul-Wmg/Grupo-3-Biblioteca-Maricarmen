@@ -370,8 +370,14 @@ def get_catalog_item(request, model_type: str, item_id: int):
         data = {
             "id": item.id,
             "titol": item.titol,
+            "titol_original": item.titol_original,
             "autor": item.autor,
             "resum": item.resum,
+            "anotacions": item.anotacions,
+            "mides": item.mides,
+            "cdu": item.CDU,  # Adding CDU to the response
+            "signatura": item.signatura,
+            "data_edicio": item.data_edicio,
             "model_type": model_type,  # Adding model type in the response
         }
 
