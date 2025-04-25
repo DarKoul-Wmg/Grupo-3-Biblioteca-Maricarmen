@@ -109,6 +109,12 @@ def crear_usuaris(centres, grups):
         username_base = f"{nom_propi[0].lower()}{nom_propi[1].lower()}{cognom.lower()}"
         username = quitar_acentos(username_base)
 
+        # Asegura que el username es único
+        contador = 1
+        while Usuari.objects.filter(username=username).exists():
+            username = f"{username_base}{contador}"
+            contador += 1
+
         # email: primeraletranombre + apellido + XXXX + @ieti.com
         random_digits = ''.join(random.choices('0123456789', k=4))
         email_base = f"{nom_propi[0].lower()}{cognom.lower()}{random_digits}"
@@ -144,12 +150,12 @@ def crear_llibres(autors, llengues, paisos, categories):
         fake = get_faker()
 
         # Evitar títulos duplicados
-        titol = fake.sentence(nb_words=4)
+        titol = fake.text(max_nb_chars=40).strip('.')
         while titol in titols_generats:
-            titol = fake.sentence(nb_words=4)
+            titol = fake.text(max_nb_chars=40).strip('.')
         titols_generats.add(titol)
 
-        titol_original = fake.sentence(nb_words=5)
+        titol_original = fake.text(max_nb_chars=40).strip('.')
 
         autor_idx = i % len(autors)
         autor = autors[autor_idx]
@@ -166,12 +172,15 @@ def crear_llibres(autors, llengues, paisos, categories):
             llengua=random.choice(llengues),
             numero=random.randint(1, 10),
             volums=random.randint(1, 3),
-            pagines=random.randint(100, 500),
+            pagines=random.randint(40, 500),
             resum=fake.paragraph(),
             anotacions=fake.sentence(),
             ISBN=fake.isbn13().replace("-", ""),
             data_edicio=fake.date_between(start_date='-10y', end_date='today'),
             CDU=cdu,
+            colleccio=fake.word().capitalize(),  # Añadir colleccio
+            mides=f"{random.randint(10, 30)}x{random.randint(10, 30)} cm",  # Añadir mides
+            signatura=f"SIGN-{random.randint(1000, 9999)}",  # Añadir signatura
         )
         llibre.tags.set(random.sample(categories, k=random.randint(1, 3)))
         llibres.append(llibre)
@@ -221,47 +230,105 @@ def crear_reserves_i_presteus(usuaris, exemplars):
             anotacions=get_faker().sentence()
         )
 
-def crear_altres_catalegs(llengues, paisos, categories):
+def crear_altres_catalegs(llengues, paisos, categories, centres):
     fake = get_faker()
+    revistes, cds, dvds, brs, dispositius = [], [], [], [], []
+
     for _ in range(NUM_REVISTES):
-        Revista.objects.create(
-            titol=fake.sentence(),
+        revista = Revista.objects.create(
+            titol=fake.text(max_nb_chars=40).strip('.'),
+            titol_original=fake.text(max_nb_chars=40).strip('.'),
             autor=fake.name(),
             llengua=random.choice(llengues),
             pais=random.choice(paisos),
             ISSN=fake.isbn13().replace("-", ""),
             editorial=fake.company(),
+            lloc=fake.city(),
+            numero=random.randint(1, 100),
+            volums=random.randint(1, 10),
+            pagines=random.randint(20, 200),
             data_edicio=fake.date_this_century(),
+            resum=fake.paragraph(),
+            anotacions=fake.sentence(),
+            CDU=f"{random.randint(10, 999)}.{random.randint(1, 99)}",
+            signatura=f"SIGN-{random.randint(1000, 9999)}",
+            mides=f"{random.randint(10, 30)}x{random.randint(10, 30)} cm",
         )
+        revista.tags.set(random.sample(categories, k=random.randint(1, 3)))
+        revistes.append(revista)
+
     for _ in range(NUM_CDS):
-        CD.objects.create(
-            titol=fake.sentence(),
+        cd = CD.objects.create(
+            titol=fake.text(max_nb_chars=40).strip('.'),
+            titol_original=fake.text(max_nb_chars=40).strip('.'),
             autor=fake.name(),
             discografica=fake.company(),
             estil=fake.word(),
             duracio=fake.time(),
+            resum=fake.paragraph(),
+            anotacions=fake.sentence(),
+            CDU=f"{random.randint(10, 999)}.{random.randint(1, 99)}",
+            signatura=f"SIGN-{random.randint(1000, 9999)}",
+            mides=f"{random.randint(10, 30)}x{random.randint(10, 30)} cm",
         )
+        cds.append(cd)
+
     for _ in range(NUM_DVDS):
-        DVD.objects.create(
-            titol=fake.sentence(),
+        dvd = DVD.objects.create(
+            titol=fake.text(max_nb_chars=40).strip('.'),
+            titol_original=fake.text(max_nb_chars=40).strip('.'),
             autor=fake.name(),
             productora=fake.company(),
             duracio=fake.time(),
+            resum=fake.paragraph(),
+            anotacions=fake.sentence(),
+            CDU=f"{random.randint(10, 999)}.{random.randint(1, 99)}",
+            signatura=f"SIGN-{random.randint(1000, 9999)}",
+            mides=f"{random.randint(10, 30)}x{random.randint(10, 30)} cm",
         )
+        dvds.append(dvd)
+
     for _ in range(NUM_BRS):
-        BR.objects.create(
-            titol=fake.sentence(),
+        br = BR.objects.create(
+            titol=fake.text(max_nb_chars=40).strip('.'),
+            titol_original=fake.text(max_nb_chars=40).strip('.'),
             autor=fake.name(),
             productora=fake.company(),
             duracio=fake.time(),
+            resum=fake.paragraph(),
+            anotacions=fake.sentence(),
+            CDU=f"{random.randint(10, 999)}.{random.randint(1, 99)}",
+            signatura=f"SIGN-{random.randint(1000, 9999)}",
+            mides=f"{random.randint(10, 30)}x{random.randint(10, 30)} cm",
         )
+        brs.append(br)
+
     for _ in range(NUM_DISPOSITIUS):
-        Dispositiu.objects.create(
+        dispositiu = Dispositiu.objects.create(
             titol=fake.word(),
+            titol_original=fake.word(),
             autor=None,
             marca=fake.company(),
-            model=fake.word()
+            model=fake.word(),
+            resum=fake.paragraph(),
+            anotacions=fake.sentence(),
+            CDU=f"{random.randint(10, 999)}.{random.randint(1, 99)}",
+            mides=f"{random.randint(10, 30)}x{random.randint(10, 30)} cm",
         )
+        dispositius.append(dispositiu)
+
+    crear_exemplars_catalegs(revistes + cds + dvds + brs + dispositius, centres)
+
+def crear_exemplars_catalegs(catalegs, centres):
+    for cataleg in catalegs:
+        for _ in range(random.randint(1, MAX_EJEMPLARS_PER_LLIBRE)):
+            Exemplar.objects.create(
+                cataleg=cataleg,
+                registre=f"{get_faker().ean(length=13)}",
+                centre=random.choice(centres),
+                exclos_prestec=random.choice([True, False]),
+                baixa=False,
+            )
 
 # ========== COMANDO DE DJANGO ==========
 
@@ -269,7 +336,7 @@ class Command(BaseCommand):
     help = 'Genera dades de prova per a la biblioteca'
 
     def handle(self, *args, **kwargs):
-        print("Creando datos de prueba...")
+        print("Crea dades de prova...")
         Reserva.objects.all().delete()
         Prestec.objects.all().delete()
         Exemplar.objects.all().delete()
@@ -305,7 +372,7 @@ class Command(BaseCommand):
         crear_reserves_i_presteus(usuaris, exemplars)
         print("Reserves i presteus generats")
 
-        crear_altres_catalegs(llengues, paisos, categories)
+        crear_altres_catalegs(llengues, paisos, categories, centres)
         print("Altres catàlegs generats")
 
 

@@ -77,9 +77,27 @@ admin.site.register(Categoria,CategoriaAdmin)
 admin.site.register(Pais)
 admin.site.register(Llengua)
 admin.site.register(Llibre,LlibreAdmin)
-admin.site.register(Revista)
-admin.site.register(Dispositiu)
 admin.site.register(Imatge)
+
+class RevistaAdmin(admin.ModelAdmin):
+	inlines = [ExemplarsInline]
+admin.site.register(Revista,RevistaAdmin)
+
+class CDAdmin(admin.ModelAdmin):
+    inlines = [ExemplarsInline]
+admin.site.register(CD, CDAdmin)
+
+class BRAdmin(admin.ModelAdmin):
+    inlines = [ExemplarsInline]
+admin.site.register(BR, BRAdmin)
+
+class DVDAdmin(admin.ModelAdmin):
+    inlines = [ExemplarsInline]
+admin.site.register(DVD, DVDAdmin)
+
+class DispositiuAdmin(admin.ModelAdmin):
+    inlines = [ExemplarsInline]
+admin.site.register(Dispositiu, DispositiuAdmin)
 
 class PrestecAdmin(admin.ModelAdmin):
     fields = ('exemplar','usuari','data_prestec','data_retorn','anotacions')
