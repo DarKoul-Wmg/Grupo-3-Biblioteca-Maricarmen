@@ -1,103 +1,105 @@
 <!DOCTYPE html>
 <html lang="en">
 
-    <head>
-        <meta charset="UTF-8" />
-        <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Error 403 - Biblioteca Mari Carmen Brito</title>
-        <link rel="stylesheet" crossorigin href="/static/index-B_h1BB6E.css">
-        <style>
+<head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Error 403 - Biblioteca Mari Carmen Brito</title>
+    <link rel="stylesheet" crossorigin href="/static/index-B_h1BB6E.css">
+    <style>
+        h2.custom-style {
+            font-size: 8rem;
+            line-height: 1;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        p.custom-style {
+            font-size: 1.5rem;
+            text-align: center;
+        }
+
+        a.custom-style {
+            font-size: 0.5rem;
+            padding: 1rem 2rem;
+            font-weight: bold;
+        }
+
+        @media (min-width: 1024px) {
             h2.custom-style {
-                font-size: 8rem;
-                line-height: 1;
-                text-align: center;
-                font-weight: bold;
+                font-size: 10rem;
             }
 
             p.custom-style {
-                font-size: 1.5rem;
-                text-align: center;
+                font-size: 2rem;
             }
 
             a.custom-style {
-                font-size: 0.5rem;
-                padding: 1rem 2rem;
-                font-weight: bold;
+                font-size: 1rem;
+                padding: 1.25rem 3rem;
             }
+        }
+    </style>
+</head>
 
-            @media (min-width: 1024px) {
-                h2.custom-style {
-                    font-size: 10rem;
-                    /* Bigger on large screens */
-                }
-
-                p.custom-style {
-                    font-size: 2rem;
-                }
-
-                a.custom-style {
-                    font-size: 1rem;
-                    padding: 1.25rem 3rem;
-                }
-            }
-        </style>
-    </head>
-
-    <body>
-        <div id="root">
-            <div class="h-screen w-screen bg-blue-100 flex flex-col">
-                <header
-                    class="flex flex-wrap md:justify-start md:flex-nowrap z-50 w-full bg-white border-b border-gray-200">
-                    <nav class="flex items-center justify-between relative w-full py-5 px-4 ">
+<body class="dark:bg-[#181818]">
+    <div id="root">
+        <div class="h-screen w-screen bg-blue-100 dark:bg-[#181818] flex flex-col">
+            <header
+                class="flex flex-wrap md:justify-start md:flex-nowrap z-50 w-full bg-white dark:bg-[#232323] border-b border-gray-200 dark:border-[#333]">
+                <nav class="flex items-center justify-between relative w-full py-5 px-4 ">
+                    <a href="/"
+                        class="flex-none font-semibold text-xl text-black dark:text-white focus:outline-hidden focus:opacity-80 cursor-pointer">
+                        Biblioteca Mari Carmen Brito
+                    </a>
+                    <div class="min-w-[100px] flex justify-end">
+                        <button type="button"
+                            class="justify-center py-3 px-4 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg focus:outline-none disabled:opacity-50 cursor-pointer border border-gray-200 dark:border-[#333] bg-white dark:bg-[#232323] text-gray-800 dark:text-white shadow-2xs hover:bg-gray-50 dark:hover:bg-[#282828] disabled:opacity-50"
+                            style="visibility: hidden;">
+                            Log In
+                        </button>
+                    </div>
+                </nav>
+            </header>
+            <div class="flex w-screen h-full items-center">
+                <div class="w-full">
+                    <main class="flex-grow flex flex-col items-center justify-center text-center px-4">
+                        <h2 class="custom-style text-blue-600 dark:text-blue-400 mb-4">403</h2>
+                        <p class="custom-style text-gray-700 dark:text-gray-200 mb-6">
+                            <strong>No tens permís</strong> per veure aquesta pàgina.
+                        </p>
                         <a href="/"
-                            class="flex-none font-semibold text-xl text-black focus:outline-hidden focus:opacity-80 cursor-pointer">
-                            Biblioteca Mari Carmen Brito
+                            class="custom-style bg-blue-700 dark:bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-800 dark:hover:bg-blue-600 font-medium">
+                            Torna a l'inici
                         </a>
-                        <div class="min-w-[100px] flex justify-end">
-                            <button type="button"
-                                class="justify-center py-3 px-4 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg focus:outline-none disabled:opacity-50 cursor-pointer border border-gray-200 bg-white text-gray-800 shadow-2xs hover:bg-gray-50 disabled:opacity-50"
-                                style="visibility: hidden;">
-                                Log In
-                            </button>
-                        </div>
-                    </nav>
-                </header>
-                <div class="flex w-screen h-full items-center">
-                    <div class="w-full">
-                        <main class="flex-grow flex flex-col items-center justify-center text-center px-4">
-                            <h2 class="custom-style text-blue-600 mb-4">403</h2>
-                            <p class="custom-style text-gray-700 mb-6">
-                                <strong>No tens permís</strong> per veure aquesta pàgina.
-                            </p>
-                            <a href="/"
-                                class="custom-style bg-blue-700 text-white px-6 py-2 rounded-lg hover:bg-blue-800 font-medium">
-                                Torna a l'inici
-                            </a>
-                        </main>
-                    </div>
+                    </main>
                 </div>
-                <footer
-                    class="h-auto mt-auto bottom-0 bg-gray-800 text-white px-6 flex justify-between items-center w-full">
-                    <div>
-                        <p>Fet per: Grup 3 AWS 2024-2025</p>
-                    </div>
-                    <div><a href="https://www.iesesteveterradas.cat" alt="Pagina Web de l' esteve terradas"><img
-                                alt="Custom Gif" class="w-fit h-fit" src="/static/footer-DEUoAeRw.gif"></a></div>
-                </footer>
             </div>
+            <footer
+                class="h-auto mt-auto bottom-0 bg-gray-800 dark:bg-[#111] text-white px-6 flex justify-between items-center w-full">
+                <div>
+                    <p>Fet per: Grup 3 AWS 2024-2025</p>
+                </div>
+                <div>
+                    <a href="https://www.iesesteveterradas.cat" alt="Pagina Web de l' esteve terradas">
+                        <img alt="Custom Gif" class="w-fit h-fit" src="/static/footer-DEUoAeRw.gif">
+                    </a>
+                </div>
+            </footer>
         </div>
-        <!-- Google tag (gtag.js) -->
-        <script async src="https://www.googletagmanager.com/gtag/js?id=G-VSHX1XS89Q"></script>
-        <script>
-            window.dataLayer = window.dataLayer || [];
-            function gtag() {
-                dataLayer.push(arguments);
-            }
-            gtag("js", new Date());
+    </div>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-VSHX1XS89Q"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() {
+            dataLayer.push(arguments);
+        }
+        gtag("js", new Date());
 
-            gtag("config", "G-VSHX1XS89Q");
-        </script>
-    </body>
+        gtag("config", "G-VSHX1XS89Q");
+    </script>
+</body>
 
 </html>
