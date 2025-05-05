@@ -2,6 +2,8 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.utils.html import escape, mark_safe
 from datetime import datetime
+from django.core.exceptions import ValidationError
+from django import forms
 
 
 from .models import *
@@ -50,11 +52,25 @@ class UsuariAdmin(UserAdmin):
         }),
     )
 
+class MarkNewInstancesAsChangedModelForm(forms.ModelForm):
+    def has_changed(self):
+        """Returns True for new instances, calls super() for ones that exist in db.
+        Prevents forms with defaults being recognized as empty/unchanged."""
+        return not self.instance.pk or super().has_changed()
+
 class ExemplarsInline(admin.TabularInline):
     model = Exemplar
-    extra = 1
-    readonly_fields = ('pk', 'registre')  # Make registre read-only
-    fields = ('pk', 'registre', 'exclos_prestec', 'baixa', 'centre')
+    extra = 0
+    form = MarkNewInstancesAsChangedModelForm
+    fields = ('registre', 'exclos_prestec', 'baixa', 'centre')  # Removed 'pk' field
+
+    def get_readonly_fields(self, request, obj=None):
+        # Always make 'registre' readonly for everyone
+        readonly = list(super().get_readonly_fields(request, obj))
+        readonly.append('registre')  # Ensure 'registre' is readonly
+        if not request.user.is_superuser:
+            readonly.append('centre')  # Make 'centre' readonly for non-superusers
+        return readonly
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -69,15 +85,16 @@ class ExemplarsInline(admin.TabularInline):
             def save_new(self, form, commit=True):
                 instance = super().save_new(form, commit=False)
 
-                # Set default centre for non-superusers
+                # Auto-generate registre if not set
                 if not request.user.is_superuser:
                     instance.centre = request.user.centre
-
-                instance.exclos_prestec = False  # default value
-
-                # Generate registre only if not already set
-                if not instance.registre:
-                    instance.registre = generate_unique_exemplar_code_for_catalegItem(instance.cataleg)
+                    
+                if not request.user.centre:
+                    raise ValidationError("L'usuari no té cap centre assignat.")
+                
+                instance.registre = generate_unique_exemplar_code_for_catalegItem(instance.cataleg)
+                instance.exclos_prestec = form.cleaned_data.get('exclos_prestec', False)
+                instance.baixa = form.cleaned_data.get('baixa', False)
 
                 if commit:
                     instance.save()
@@ -88,8 +105,16 @@ class ExemplarsInline(admin.TabularInline):
     def get_fields(self, request, obj=None):
         fields = list(super().get_fields(request, obj))
         if not request.user.is_superuser and 'centre' in fields:
-            fields.remove('centre')
+            fields.remove('centre')  # Remove 'centre' field for non-superusers
         return fields
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """
+        Automatically populate the 'centre' field for non-superuser users.
+        """
+        if db_field.name == 'centre' and not request.user.is_superuser:
+            kwargs['initial'] = request.user.centre
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 class LlibreAdmin(admin.ModelAdmin):
 	form = LlibreForm
