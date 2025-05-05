@@ -1,8 +1,9 @@
 import random
 import unicodedata
 from faker import Faker
-from datetime import timedelta
+from datetime import timedelta, datetime
 from django.utils.timezone import now
+from django.db.models import Max
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import Group  # Importa el modelo Group
 
@@ -44,6 +45,29 @@ def get_faker():
     return random.choice(fakers)
 
 # ========== FUNCIONES ==========
+
+def generate_unique_exemplar_code_for_catalegItem(cataleg):
+    current_year = datetime.now().year
+    prefix = f"EX-{current_year}-"
+
+    # Only search exemplars from this specific cataleg
+    last_code = (
+        Exemplar.objects
+        .filter(cataleg=cataleg, registre__startswith=prefix)
+        .aggregate(Max("registre"))
+        .get("registre__max")
+    )
+
+    if last_code:
+        try:
+            last_number = int(last_code.split("-")[-1])
+        except (IndexError, ValueError):
+            last_number = 0
+    else:
+        last_number = 0
+
+    new_number = last_number + 1
+    return f"{prefix}{new_number:06d}"
 
 def crear_centres():
     centres = []
@@ -193,7 +217,7 @@ def crear_exemplars(llibres, centres):
         for _ in range(random.randint(1, MAX_EJEMPLARS_PER_LLIBRE)):
             exemplar = Exemplar.objects.create(
                 cataleg=llibre,
-                registre=f"{get_faker().ean(length=13)}",
+                registre=generate_unique_exemplar_code_for_catalegItem(llibre),
                 centre=random.choice(centres),
                 exclos_prestec=random.choice([True, False]),
                 baixa=False,
@@ -324,7 +348,7 @@ def crear_exemplars_catalegs(catalegs, centres):
         for _ in range(random.randint(1, MAX_EJEMPLARS_PER_LLIBRE)):
             Exemplar.objects.create(
                 cataleg=cataleg,
-                registre=f"{get_faker().ean(length=13)}",
+                registre=generate_unique_exemplar_code_for_catalegItem(cataleg),
                 centre=random.choice(centres),
                 exclos_prestec=random.choice([True, False]),
                 baixa=False,

@@ -1,10 +1,34 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.utils.html import escape, mark_safe
+from datetime import datetime
 
 
 from .models import *
 from .forms import LlibreForm
+
+def generate_unique_exemplar_code_for_catalegItem(cataleg):
+    year = datetime.now().year
+    prefix = f"EX-{year}"
+
+    # Get highest existing number for this catalog item
+    latest_exemplar = (
+        Exemplar.objects
+        .filter(cataleg=cataleg, registre__startswith=prefix)
+        .order_by("-registre")
+        .first()
+    )
+
+    if latest_exemplar and latest_exemplar.registre:
+        try:
+            last_number = int(latest_exemplar.registre.split("-")[-1])
+        except (IndexError, ValueError):
+            last_number = 0
+    else:
+        last_number = 0
+
+    new_number = last_number + 1
+    return f"{prefix}-{str(new_number).zfill(6)}"
 
 class CategoriaAdmin(admin.ModelAdmin):
 	list_display = ('nom','parent')
@@ -27,37 +51,45 @@ class UsuariAdmin(UserAdmin):
     )
 
 class ExemplarsInline(admin.TabularInline):
-	model = Exemplar
-	extra = 1
-	readonly_fields = ('pk',)
-	fields = ('pk','registre','exclos_prestec','baixa','centre',)
- 
-	def get_queryset(self, request):
-		qs = super().get_queryset(request)
-		if request.user.is_superuser:
-			return qs
-		return qs.filter(centre=request.user.centre)
+    model = Exemplar
+    extra = 1
+    readonly_fields = ('pk', 'registre')  # Make registre read-only
+    fields = ('pk', 'registre', 'exclos_prestec', 'baixa', 'centre')
 
-	def get_formset(self, request, obj=None, **kwargs):
-		formset = super().get_formset(request, obj, **kwargs)
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(centre=request.user.centre)
 
-		class CustomFormset(formset):
-			def save_new(self, form, commit=True):
-				instance = super().save_new(form, commit=False)
-				if not request.user.is_superuser:
-					instance.centre = request.user.centre
-				instance.exclos_prestec = False  # valor per defecte
-				if commit:
-					instance.save()
-				return instance
+    def get_formset(self, request, obj=None, **kwargs):
+        formset = super().get_formset(request, obj, **kwargs)
 
-		return CustomFormset
+        class CustomFormset(formset):
+            def save_new(self, form, commit=True):
+                instance = super().save_new(form, commit=False)
 
-	def get_fields(self, request, obj=None):
-		fields = list(super().get_fields(request, obj))
-		if not request.user.is_superuser and 'centre' in fields:
-			fields.remove('centre')
-		return fields
+                # Set default centre for non-superusers
+                if not request.user.is_superuser:
+                    instance.centre = request.user.centre
+
+                instance.exclos_prestec = False  # default value
+
+                # Generate registre only if not already set
+                if not instance.registre:
+                    instance.registre = generate_unique_exemplar_code_for_catalegItem(instance.cataleg)
+
+                if commit:
+                    instance.save()
+                return instance
+
+        return CustomFormset
+
+    def get_fields(self, request, obj=None):
+        fields = list(super().get_fields(request, obj))
+        if not request.user.is_superuser and 'centre' in fields:
+            fields.remove('centre')
+        return fields
 
 class LlibreAdmin(admin.ModelAdmin):
 	form = LlibreForm
