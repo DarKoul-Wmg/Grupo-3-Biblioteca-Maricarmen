@@ -60,7 +60,7 @@ class MarkNewInstancesAsChangedModelForm(forms.ModelForm):
 
 class ExemplarsInline(admin.TabularInline):
     model = Exemplar
-    extra = 0
+    extra = 0  # Set to 0 to prevent any pre-filled extra forms
     form = MarkNewInstancesAsChangedModelForm
     fields = ('registre', 'exclos_prestec', 'baixa', 'centre')  # Removed 'pk' field
 
@@ -86,19 +86,27 @@ class ExemplarsInline(admin.TabularInline):
                 instance = super().save_new(form, commit=False)
 
                 # Auto-generate registre if not set
-                if not request.user.is_superuser:
-                    instance.centre = request.user.centre
-                    
-                if not request.user.centre:
-                    raise ValidationError("L'usuari no té cap centre assignat.")
-                
                 instance.registre = generate_unique_exemplar_code_for_catalegItem(instance.cataleg)
-                instance.exclos_prestec = form.cleaned_data.get('exclos_prestec', False)
-                instance.baixa = form.cleaned_data.get('baixa', False)
+                
+                if not request.user.is_superuser:
+                    if not request.user.centre:
+                        raise ValidationError("L'usuari no té cap centre assignat.")
+                    instance.centre = request.user.centre
 
                 if commit:
                     instance.save()
                 return instance
+
+            def save_m2m(self):
+                # Overriding save_m2m to handle many-to-many relationships if needed
+                for form in self.forms:
+                    if form.has_changed():
+                        form.save_m2m()
+                
+                # Call to save the instances
+                for form in self.forms:
+                    if form.has_changed():
+                        form.save()
 
         return CustomFormset
 
@@ -115,6 +123,7 @@ class ExemplarsInline(admin.TabularInline):
         if db_field.name == 'centre' and not request.user.is_superuser:
             kwargs['initial'] = request.user.centre
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
 
 class LlibreAdmin(admin.ModelAdmin):
 	form = LlibreForm
