@@ -140,3 +140,24 @@ admin.site.register(Grup)
 admin.site.register(Reserva)
 admin.site.register(Prestec,PrestecAdmin)
 admin.site.register(Peticio)
+
+class ExemplarAdmin(admin.ModelAdmin):
+    list_display = ('registre', 'cataleg_nom','cataleg_tipus', 'centre', 'exclos_prestec', 'baixa')
+    search_fields = ('registre', 'cataleg__titol')
+    list_filter = ('centre', 'exclos_prestec', 'baixa')
+    ordering = ('cataleg__titol',)
+
+    def cataleg_nom(self, obj):
+        return obj.cataleg.titol
+    cataleg_nom.admin_order_field = 'cataleg__titol'
+    cataleg_nom.short_description = 'Títol Catàleg'
+
+    def cataleg_tipus(self, obj):
+    # Devuelve el tipo real del catálogo (Llibre, Revista, CD, etc.)
+        for tipus in ['llibre', 'revista', 'cd', 'dvd', 'br', 'dispositiu']:
+            if hasattr(obj.cataleg, tipus):
+                return tipus.capitalize()
+        return "Catàleg"
+    cataleg_tipus.short_description = 'Tipus'
+
+admin.site.register(Exemplar, ExemplarAdmin)
