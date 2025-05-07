@@ -478,7 +478,12 @@ def get_catalog_item(request, model_type: str, item_id: int):
                 "baixa": ex.baixa,
                 "centre": {
                     "nom": ex.centre.nom if ex.centre else None
-                }
+                },
+                "disponible": not Prestec.objects.filter(
+                    exemplar=ex,
+                    data_retorn__gte=date.today()
+                ).exists()
+
             }
             for ex in exemplars
         ]
@@ -551,9 +556,6 @@ def crear_prestec(request, usuari_id: int, exemplar_id: int, anotacions: str = "
         raise HttpError(404, "Exemplar no trobat")
 
     try:
-        # Update the exemplar to indicate it's checked out
-        exemplar.exclos_prestec = True
-        exemplar.save()
         
         data_prestec = date.today()
         data_retorn = data_prestec + timedelta(weeks=1)
