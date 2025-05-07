@@ -174,6 +174,11 @@ class PrestecAdmin(admin.ModelAdmin):
         if request.user.is_superuser:
             return qs
         return qs.filter(exemplar__centre=request.user.centre)
+    
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "exemplar" and not request.user.is_superuser:
+            kwargs["queryset"] = Exemplar.objects.filter(centre=request.user.centre)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 admin.site.register(Centre)
 admin.site.register(Grup)
