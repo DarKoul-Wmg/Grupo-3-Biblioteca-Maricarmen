@@ -168,6 +168,17 @@ admin.site.register(Dispositiu, DispositiuAdmin)
 class PrestecAdmin(admin.ModelAdmin):
     fields = ('exemplar','usuari','data_prestec','data_retorn','anotacions')
     list_display = ('exemplar','usuari','data_prestec','data_retorn')
+    
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(exemplar__centre=request.user.centre)
+    
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "exemplar" and not request.user.is_superuser:
+            kwargs["queryset"] = Exemplar.objects.filter(centre=request.user.centre)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 admin.site.register(Centre)
 admin.site.register(Grup)
