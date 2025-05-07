@@ -168,6 +168,12 @@ admin.site.register(Dispositiu, DispositiuAdmin)
 class PrestecAdmin(admin.ModelAdmin):
     fields = ('exemplar','usuari','data_prestec','data_retorn','anotacions')
     list_display = ('exemplar','usuari','data_prestec','data_retorn')
+    
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(exemplar__centre=request.user.centre)
 
 admin.site.register(Centre)
 admin.site.register(Grup)
