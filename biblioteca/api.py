@@ -7,6 +7,28 @@ from ninja.security import HttpBasicAuth, HttpBearer
 from django.http import HttpRequest
 from django.db.models import Q, Value
 from django.db.models.functions import Concat
+from pathlib import Path
+
+
+from typing import List
+from django.http import HttpResponse
+from django.template.loader import get_template
+from io import BytesIO
+import base64
+from xhtml2pdf import pisa
+from barcode.writer import ImageWriter
+from datetime import datetime
+import os
+
+
+
+
+
+
+# Importa las librerías necesarias para generar códigos y PDF
+import barcode
+
+
 
 from .models import *
 from typing import List, Optional, Union, Dict, Any
@@ -894,3 +916,87 @@ def import_users(request, file: UploadedFile = File(...)):
     }
 
     return summary
+
+class BarcodeRequest(Schema):
+    exemplars: List[Dict[str, str]]  
+
+
+
+@api.post("/generate-exemplars-pdf/")
+
+def generate_barcode_pdf(request, data: BarcodeRequest):
+    print(f"[DEBUG] Datos recibidos: {data}")  # Agrega una impresión de los datos completos recibidos
+    exemplars = data.exemplars
+    print(f"[DEBUG] Códigos recibidos: {exemplars}")
+
+    barcode_images = []
+    options = {
+        'module_height': 5.0,
+        'font_size': 7,
+        'text_distance': 2.0,
+        'quiet_zone': 1.5
+    }
+
+    for exemplar in exemplars:
+        try:
+            buffer = BytesIO()
+            code_type = barcode.get_barcode_class('code128')
+            barcode_img = code_type(exemplar["id"], writer=ImageWriter())  
+            barcode_img.write(buffer, options=options)
+            img_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+            image_data_uri = f"data:image/png;base64,{img_base64}"
+            barcode_images.append({
+                'code': exemplar['id'],  
+                'image_base64': image_data_uri,
+                'CDU': exemplar['cdu'],  
+                'title': exemplar['title'],
+                'center': exemplar['center'] 
+
+            })
+        except Exception as e:
+            print(f"[ERROR] Error generando código '{exemplar['id']}': {e}")
+            continue
+
+
+
+        except Exception as e:
+            print(f"[ERROR] Error generando código '{exemplar.id}': {e}")
+            continue
+
+    if not barcode_images:
+        return Response(content="No se pudieron generar códigos válidos.", status_code=400)
+
+    items_per_page = 17 * 4
+    pages = [barcode_images[i:i+items_per_page] for i in range(0, len(barcode_images), items_per_page)]
+
+    # Agrupar de 2 en 2 para facilitar el renderizado
+    grouped_pages = []
+    for page in pages:
+        grouped_items = [page[i:i+2] for i in range(0, len(page), 2)]
+        grouped_pages.append(grouped_items)
+
+    context = {
+        'pages': grouped_pages,
+    }
+
+    pdf_bytes = html_to_pdf('barcode_template.html', context)
+
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = 'inline; filename="barcodes.pdf"'
+    return response
+
+
+def html_to_pdf(template_src, context_dict={}):
+    try:
+        template = get_template(template_src)
+        html = template.render(context_dict)
+        result = io.BytesIO()
+        pdf = pisa.pisaDocument(io.BytesIO(html.encode("UTF-8")), result)
+        if not pdf.err:
+            return result.getvalue()
+        else:
+            print("[ERROR] Error al renderizar PDF con xhtml2pdf")
+            return None
+    except Exception as e:
+        print(f"[ERROR] Error al generar PDF: {e}")
+        return None
