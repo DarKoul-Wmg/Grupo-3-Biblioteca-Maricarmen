@@ -1,103 +1,196 @@
 <!DOCTYPE html>
 <html lang="en">
 
-    <head>
-        <meta charset="UTF-8" />
-        <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Error 403 - Biblioteca Mari Carmen Brito</title>
-        <link rel="stylesheet" crossorigin href="/static/index-B_h1BB6E.css">
-        <style>
+<head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Error 403 - Biblioteca Mari Carmen Brito</title>
+    <link rel="stylesheet" crossorigin href="/static/index-Buy0b1F6.css">
+    <style>
+        h2.custom-style {
+            font-size: 8rem;
+            line-height: 1;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        p.custom-style {
+            font-size: 1.5rem;
+            text-align: center;
+        }
+
+        a.custom-style {
+            font-size: 0.5rem;
+            padding: 1rem 2rem;
+            font-weight: bold;
+        }
+
+        @media (min-width: 1024px) {
             h2.custom-style {
-                font-size: 8rem;
-                line-height: 1;
-                text-align: center;
-                font-weight: bold;
+                font-size: 10rem;
             }
 
             p.custom-style {
-                font-size: 1.5rem;
-                text-align: center;
+                font-size: 2rem;
             }
 
             a.custom-style {
-                font-size: 0.5rem;
-                padding: 1rem 2rem;
-                font-weight: bold;
+                font-size: 1rem;
+                padding: 1.25rem 3rem;
             }
-
-            @media (min-width: 1024px) {
-                h2.custom-style {
-                    font-size: 10rem;
-                    /* Bigger on large screens */
-                }
-
-                p.custom-style {
-                    font-size: 2rem;
-                }
-
-                a.custom-style {
-                    font-size: 1rem;
-                    padding: 1.25rem 3rem;
-                }
+        }
+    </style>
+    <script>
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+        }
+        
+        function setCookie(name, value, days = 365) {
+            const expires = new Date(Date.now() + days*24*60*60*1000).toUTCString();
+            document.cookie = `${name}=${value}; expires=${expires}; path=/`;
+        }
+        
+        function prefersDarkMode() {
+            return window.matchMedia("(prefers-color-scheme: dark)").matches;
+        }
+        
+        function applyTheme(theme) {
+            const root = document.getElementById("root-container");
+            if (!root) return;
+        
+            const shouldBeDark = theme === "dark" || (theme === "system" && prefersDarkMode());
+            root.classList.toggle("dark", shouldBeDark);
+            setCookie("theme", theme);
+        
+            updateButtonIcon(shouldBeDark);
+        }
+        
+        function updateButtonIcon(isDark) {
+            const buttonSpan = document.querySelector('button[aria-label="Cambiar tema"] span');
+            if (!buttonSpan) return;
+        
+            buttonSpan.innerHTML = isDark
+                ? `
+                <svg class="size-4" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="2" />
+                    <path d="M12 2v2" stroke="currentColor" stroke-width="2" />
+                    <path d="M12 20v2" stroke="currentColor" stroke-width="2" />
+                    <path d="M2 12h2" stroke="currentColor" stroke-width="2" />
+                    <path d="M20 12h2" stroke="currentColor" stroke-width="2" />
+                    <path d="m4.93 4.93 1.41 1.41" stroke="currentColor" stroke-width="2" />
+                    <path d="m17.66 17.66 1.41 1.41" stroke="currentColor" stroke-width="2" />
+                    <path d="m6.34 17.66-1.41 1.41" stroke="currentColor" stroke-width="2" />
+                    <path d="m19.07 4.93-1.41 1.41" stroke="currentColor" stroke-width="2" />
+                </svg>
+                `
+                : `
+                <svg class="size-4" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                `;
+        }
+        
+        function initializeTheme() {
+            let theme = getCookie('theme') || 'system';  // Default to system
+            applyTheme(theme);
+        
+            // If theme is system, listen to system changes
+            if (theme === "system") {
+                window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+                    applyTheme('system');
+                });
             }
-        </style>
-    </head>
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeTheme();
+        
+            const themeToggleButton = document.querySelector('button[aria-label="Cambiar tema"]');
+            if (themeToggleButton) {
+                themeToggleButton.addEventListener('click', () => {
+                    let currentTheme = getCookie('theme') || 'system';
+        
+                    let newTheme;
+                    if (currentTheme === "light") {
+                        newTheme = "dark";
+                    } else if (currentTheme === "dark") {
+                        newTheme = "system"; // After dark → system
+                    } else {
+                        newTheme = "light"; // After system → light
+                    }
+        
+                    applyTheme(newTheme);
+                });
+            }
+        });
+    </script>
+</head>
 
-    <body>
-        <div id="root">
-            <div class="h-screen w-screen bg-blue-100 flex flex-col">
-                <header
-                    class="flex flex-wrap md:justify-start md:flex-nowrap z-50 w-full bg-white border-b border-gray-200">
-                    <nav class="flex items-center justify-between relative w-full py-5 px-4 ">
-                        <a href="/"
-                            class="flex-none font-semibold text-xl text-black focus:outline-hidden focus:opacity-80 cursor-pointer">
+<body>
+    <div id="root">
+        <div id="root-container" class="">
+            <div class="min-h-screen w-full bg-blue-100 dark:bg-[#141414] flex flex-col">
+                <header class="flex flex-wrap md:justify-start md:flex-nowrap z-50 w-full bg-white dark:bg-[#141414] border-b border-gray-200 dark:border-[#3c3c50]">
+                    <nav class="flex items-center justify-between relative w-full py-5 px-5">
+                        <a href="/" 
+                            class="flex-none font-semibold text-xl text-black dark:text-white focus:outline-hidden focus:opacity-80 cursor-pointer">
                             Biblioteca Mari Carmen Brito
                         </a>
                         <div class="min-w-[100px] flex justify-end">
-                            <button type="button"
-                                class="justify-center py-3 px-4 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg focus:outline-none disabled:opacity-50 cursor-pointer border border-gray-200 bg-white text-gray-800 shadow-2xs hover:bg-gray-50 disabled:opacity-50"
+                            <button type="button" class="justify-center py-3 px-4 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg focus:outline-none disabled:opacity-50 cursor-pointer dark:bg-[#282828] dark:text-white dark:hover:bg-[#3c3c3c] dark:focus:bg-[#3c3c3c] dark:placeholder-gray-400 border border-gray-200 bg-white text-gray-800 shadow-2xs hover:bg-gray-50 disabled:opacity-50" 
                                 style="visibility: hidden;">
-                                Log In
+                                Iniciar Sessió
+                            </button>
+                            <button type="button" class="cursor-pointer font-medium text-gray-800 dark:text-gray-200 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none px-1 mx-2" aria-label="Cambiar tema">
+                                <span class="group inline-flex items-center justify-center size-9">
+                                    <svg class="size-4" viewBox="0 0 24 24" fill="none">
+                                        <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                                    </svg>
+                                </span>
                             </button>
                         </div>
                     </nav>
                 </header>
-                <div class="flex w-screen h-full items-center">
-                    <div class="w-full">
-                        <main class="flex-grow flex flex-col items-center justify-center text-center px-4">
-                            <h2 class="custom-style text-blue-600 mb-4">403</h2>
-                            <p class="custom-style text-gray-700 mb-6">
-                                <strong>No tens permís</strong> per veure aquesta pàgina.
-                            </p>
-                            <a href="/"
-                                class="custom-style bg-blue-700 text-white px-6 py-2 rounded-lg hover:bg-blue-800 font-medium">
-                                Torna a l'inici
-                            </a>
-                        </main>
+                <div class="flex flex-1 w-full min-h-screen h-full dark:bg-[#282828] bg-white">
+                    <div class="w-full flex-1 flex items-center justify-center dark:bg-[#282828] bg-blue-100">
+                        <div class="flex w-full h-full items-center justify-center flex-col gap-6 p-4 bg-blue-100 dark:bg-[#141414]">
+                            <h2 class="custom-style text-blue-600 dark:text-blue-400 mb-4">403</h2>
+                        <p class="custom-style text-gray-700 dark:text-gray-200 mb-6">
+                            <strong>No tens permís</strong> per veure aquesta pàgina.
+                        </p>
+                        <a href="/"
+                            class="custom-style bg-blue-700 dark:bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-800 dark:hover:bg-blue-600 font-medium">
+                            Torna a l'inici
+                        </a>
+                        </div>
                     </div>
                 </div>
-                <footer
-                    class="h-auto mt-auto bottom-0 bg-gray-800 text-white px-6 flex justify-between items-center w-full">
+                <footer class="bg-gray-800 text-white px-6 py-4 flex justify-between items-center w-full">
                     <div>
-                        <p>Fet per: Grup 3 AWS 2024-2025</p>
+                    <p>Fet per: Grup 3 AWS 2024-2025</p>
                     </div>
-                    <div><a href="https://www.iesesteveterradas.cat" alt="Pagina Web de l' esteve terradas"><img
-                                alt="Custom Gif" class="w-fit h-fit" src="/static/footer-DEUoAeRw.gif"></a></div>
+                    <div>
+                    <a href="https://www.iesesteveterradas.cat" alt="Pagina Web de l' esteve terradas"><img alt="Custom Gif" class="w-fit h-fit" src="/static/footer-DEUoAeRw.gif" /></a>
+                    </div>
                 </footer>
             </div>
         </div>
-        <!-- Google tag (gtag.js) -->
-        <script async src="https://www.googletagmanager.com/gtag/js?id=G-VSHX1XS89Q"></script>
-        <script>
-            window.dataLayer = window.dataLayer || [];
-            function gtag() {
-                dataLayer.push(arguments);
-            }
-            gtag("js", new Date());
+        <div class="fixed bottom-4 right-4 space-y-2"></div>
+    </div>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-VSHX1XS89Q"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() {
+            dataLayer.push(arguments);
+        }
+        gtag("js", new Date());
 
-            gtag("config", "G-VSHX1XS89Q");
-        </script>
-    </body>
+        gtag("config", "G-VSHX1XS89Q");
+    </script>
+</body>
 
 </html>

@@ -1,10 +1,36 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.utils.html import escape, mark_safe
+from datetime import datetime
+from django.core.exceptions import ValidationError
+from django import forms
 
 
 from .models import *
 from .forms import LlibreForm
+
+def generate_unique_exemplar_code_for_catalegItem(cataleg):
+    year = datetime.now().year
+    prefix = f"EX-{year}"
+
+    # Get highest existing number for this catalog item
+    latest_exemplar = (
+        Exemplar.objects
+        .filter(cataleg=cataleg, registre__startswith=prefix)
+        .order_by("-registre")
+        .first()
+    )
+
+    if latest_exemplar and latest_exemplar.registre:
+        try:
+            last_number = int(latest_exemplar.registre.split("-")[-1])
+        except (IndexError, ValueError):
+            last_number = 0
+    else:
+        last_number = 0
+
+    new_number = last_number + 1
+    return f"{prefix}-{str(new_number).zfill(6)}"
 
 class CategoriaAdmin(admin.ModelAdmin):
 	list_display = ('nom','parent')
@@ -26,38 +52,78 @@ class UsuariAdmin(UserAdmin):
         }),
     )
 
+class MarkNewInstancesAsChangedModelForm(forms.ModelForm):
+    def has_changed(self):
+        """Returns True for new instances, calls super() for ones that exist in db.
+        Prevents forms with defaults being recognized as empty/unchanged."""
+        return not self.instance.pk or super().has_changed()
+
 class ExemplarsInline(admin.TabularInline):
-	model = Exemplar
-	extra = 1
-	readonly_fields = ('pk',)
-	fields = ('pk','registre','exclos_prestec','baixa','centre',)
- 
-	def get_queryset(self, request):
-		qs = super().get_queryset(request)
-		if request.user.is_superuser:
-			return qs
-		return qs.filter(centre=request.user.centre)
+    model = Exemplar
+    extra = 0  # Set to 0 to prevent any pre-filled extra forms
+    form = MarkNewInstancesAsChangedModelForm
+    fields = ('registre', 'exclos_prestec', 'baixa', 'centre')  # Removed 'pk' field
 
-	def get_formset(self, request, obj=None, **kwargs):
-		formset = super().get_formset(request, obj, **kwargs)
+    def get_readonly_fields(self, request, obj=None):
+        # Always make 'registre' readonly for everyone
+        readonly = list(super().get_readonly_fields(request, obj))
+        readonly.append('registre')  # Ensure 'registre' is readonly
+        if not request.user.is_superuser:
+            readonly.append('centre')  # Make 'centre' readonly for non-superusers
+        return readonly
 
-		class CustomFormset(formset):
-			def save_new(self, form, commit=True):
-				instance = super().save_new(form, commit=False)
-				if not request.user.is_superuser:
-					instance.centre = request.user.centre
-				instance.exclos_prestec = False  # valor per defecte
-				if commit:
-					instance.save()
-				return instance
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(centre=request.user.centre)
 
-		return CustomFormset
+    def get_formset(self, request, obj=None, **kwargs):
+        formset = super().get_formset(request, obj, **kwargs)
 
-	def get_fields(self, request, obj=None):
-		fields = list(super().get_fields(request, obj))
-		if not request.user.is_superuser and 'centre' in fields:
-			fields.remove('centre')
-		return fields
+        class CustomFormset(formset):
+            def save_new(self, form, commit=True):
+                instance = super().save_new(form, commit=False)
+
+                # Auto-generate registre if not set
+                instance.registre = generate_unique_exemplar_code_for_catalegItem(instance.cataleg)
+                
+                if not request.user.is_superuser:
+                    if not request.user.centre:
+                        raise ValidationError("L'usuari no té cap centre assignat.")
+                    instance.centre = request.user.centre
+
+                if commit:
+                    instance.save()
+                return instance
+
+            def save_m2m(self):
+                # Overriding save_m2m to handle many-to-many relationships if needed
+                for form in self.forms:
+                    if form.has_changed():
+                        form.save_m2m()
+                
+                # Call to save the instances
+                for form in self.forms:
+                    if form.has_changed():
+                        form.save()
+
+        return CustomFormset
+
+    def get_fields(self, request, obj=None):
+        fields = list(super().get_fields(request, obj))
+        if not request.user.is_superuser and 'centre' in fields:
+            fields.remove('centre')  # Remove 'centre' field for non-superusers
+        return fields
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """
+        Automatically populate the 'centre' field for non-superuser users.
+        """
+        if db_field.name == 'centre' and not request.user.is_superuser:
+            kwargs['initial'] = request.user.centre
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
 
 class LlibreAdmin(admin.ModelAdmin):
 	form = LlibreForm
@@ -102,9 +168,41 @@ admin.site.register(Dispositiu, DispositiuAdmin)
 class PrestecAdmin(admin.ModelAdmin):
     fields = ('exemplar','usuari','data_prestec','data_retorn','anotacions')
     list_display = ('exemplar','usuari','data_prestec','data_retorn')
+    
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(exemplar__centre=request.user.centre)
+    
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "exemplar" and not request.user.is_superuser:
+            kwargs["queryset"] = Exemplar.objects.filter(centre=request.user.centre)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 admin.site.register(Centre)
 admin.site.register(Grup)
 admin.site.register(Reserva)
 admin.site.register(Prestec,PrestecAdmin)
 admin.site.register(Peticio)
+
+class ExemplarAdmin(admin.ModelAdmin):
+    list_display = ('registre', 'cataleg_nom','cataleg_tipus', 'centre', 'exclos_prestec', 'baixa')
+    search_fields = ('registre', 'cataleg__titol')
+    list_filter = ('centre', 'exclos_prestec', 'baixa')
+    ordering = ('cataleg__titol',)
+
+    def cataleg_nom(self, obj):
+        return obj.cataleg.titol
+    cataleg_nom.admin_order_field = 'cataleg__titol'
+    cataleg_nom.short_description = 'Títol Catàleg'
+
+    def cataleg_tipus(self, obj):
+    # Devuelve el tipo real del catálogo (Llibre, Revista, CD, etc.)
+        for tipus in ['llibre', 'revista', 'cd', 'dvd', 'br', 'dispositiu']:
+            if hasattr(obj.cataleg, tipus):
+                return tipus.capitalize()
+        return "Catàleg"
+    cataleg_tipus.short_description = 'Tipus'
+
+admin.site.register(Exemplar, ExemplarAdmin)
