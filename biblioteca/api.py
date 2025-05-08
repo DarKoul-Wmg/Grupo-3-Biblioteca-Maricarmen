@@ -168,6 +168,12 @@ class ExemplarInLlibreOut(Schema):
     baixa: bool
     centre: Optional[CentreOut]
 
+class LlibreWithExemplarsOut(Schema):
+    id: int
+    titol: str
+    autor: Optional[str]
+    exemplars: List[ExemplarInLlibreOut] = []
+
 class LlibreDetailOut(CatalegOut):
     editorial: Optional[str]
     ISBN: Optional[str]
@@ -188,12 +194,36 @@ class LlibreIn(Schema):
     editorial: str
 
 
-@api.get("/llibres", response=List[LlibreOut])
-@api.get("/llibres/", response=List[LlibreOut])
+# @api.get("/llibres", response=List[LlibreOut])
+# @api.get("/llibres/", response=List[LlibreOut])
+@api.get("/llibres", response=List[LlibreWithExemplarsOut])
+@api.get("/llibres/", response=List[LlibreWithExemplarsOut])
 #@api.get("/llibres/", response=List[LlibreOut], auth=AuthBearer())
 def get_llibres(request):
-    qs = Llibre.objects.all()
-    return qs
+    llibres = Llibre.objects.all()
+    result = []
+    for llibre in llibres:
+        exemplars = Exemplar.objects.filter(cataleg=llibre)
+        exemplars_out = [
+            ExemplarInLlibreOut(
+                id=ex.id,
+                registre=ex.registre,
+                exclos_prestec=ex.exclos_prestec,
+                baixa=ex.baixa,
+                centre=CentreOut(nom=ex.centre.nom) if ex.centre else None,
+                disponible=not Prestec.objects.filter(exemplar=ex, data_retorn__gte=date.today()).exists()
+            )
+            for ex in exemplars
+        ]
+        result.append(
+            LlibreWithExemplarsOut(
+                id=llibre.id,
+                titol=llibre.titol,
+                autor=llibre.autor,
+                exemplars=exemplars_out
+            )
+        )
+    return result
 
 @api.get("/llibres/search", response=Dict[str, Any])
 def search_llibres(request, text: str, page: int = Query(1)):
@@ -284,6 +314,22 @@ def search_catalegs(request, text: str, page: int = Query(1)):
             "autor": getattr(obj, "autor", None),
             "type": obj.__class__.__name__,
         }
+         # Añadir ejemplares si existen para cualquier modelo
+        exemplars = Exemplar.objects.filter(cataleg=obj)
+        base_data["exemplars"] = [
+            {
+                "id": ex.id,
+                "registre": ex.registre,
+                "exclos_prestec": ex.exclos_prestec,
+                "baixa": ex.baixa,
+                "centre": {"nom": ex.centre.nom if ex.centre else None},
+                "disponible": not Prestec.objects.filter(
+                    exemplar=ex,
+                    data_retorn__gte=date.today()
+                ).exists()
+            }
+            for ex in exemplars
+        ]
 
         if isinstance(obj, Llibre):
             schema_data = LlibreOut.from_orm(obj).dict()
@@ -432,7 +478,12 @@ def get_catalog_item(request, model_type: str, item_id: int):
                 "baixa": ex.baixa,
                 "centre": {
                     "nom": ex.centre.nom if ex.centre else None
-                }
+                },
+                "disponible": not Prestec.objects.filter(
+                    exemplar=ex,
+                    data_retorn__gte=date.today()
+                ).exists()
+
             }
             for ex in exemplars
         ]
@@ -640,9 +691,6 @@ def crear_prestec(request, usuari_id: int, exemplar_id: int, anotacions: str = "
         raise HttpError(404, "Exemplar no trobat")
 
     try:
-        # Update the exemplar to indicate it's checked out
-        exemplar.exclos_prestec = True
-        exemplar.save()
         
         data_prestec = date.today()
         data_retorn = data_prestec + timedelta(weeks=1)
