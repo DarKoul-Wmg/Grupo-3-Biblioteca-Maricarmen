@@ -1,21 +1,28 @@
 from django.contrib.auth import authenticate
+from django.db.models import Q, Value
+from django.db.models.functions import Concat
+from django.contrib.auth.models import Group
+from django.db import IntegrityError
+from django.http import HttpRequest
 from ninja import NinjaAPI, Schema, File, Form, Query
 from ninja.files import UploadedFile
 from ninja.errors import HttpError
 from ninja.responses import Response
 from ninja.security import HttpBasicAuth, HttpBearer
-from django.http import HttpRequest
-from django.db.models import Q, Value
-from django.db.models.functions import Concat
-
 from .models import *
+
 from typing import List, Optional, Union, Dict, Any
 import re  # For email validation
 import io  # For handling in-memory file operations
 import csv  # For CSV file handling
 import secrets
+import json
+import traceback
 from math import ceil
 from datetime import date, timedelta
+from google.oauth2 import id_token
+from google.auth.transport import requests
+
 
 api = NinjaAPI()
 
@@ -770,3 +777,58 @@ def import_users(request, file: UploadedFile = File(...)):
     }
 
     return summary
+
+
+
+
+@api.post("/google-login/")
+def google_login(request):
+    body = json.loads(request.body.decode())
+    id_token_str = body.get("id_token")
+    if not id_token_str:
+        print("No id_token found in request body")
+        return api.create_response(request, {"detail": "No id_token"}, status=400)
+    try:
+        # Verifica el token con Google
+        idinfo = id_token.verify_oauth2_token(
+            id_token_str,
+            requests.Request(),
+            "24541393337-df41pocq7fcqup1js9dr7816b2d5pq14.apps.googleusercontent.com"
+        )
+        email = idinfo["email"]
+        first_name = idinfo.get("given_name", "")
+        last_name = idinfo.get("family_name", "")
+
+        # Busca primero por email
+        user = Usuari.objects.filter(email=email).first()
+        if not user:
+            # Genera username único
+            username_base = email.split("@")[0]
+            username = username_base
+            counter = 1
+            while Usuari.objects.filter(username=username).exists():
+                username = f"{username_base}{counter}"
+                counter += 1
+            user = Usuari.objects.create(
+                email=email,
+                username=username,
+                first_name=first_name,
+                last_name=last_name,
+            )
+
+            try:
+                group = Group.objects.get(name="Usuari")
+                user.groups.add(group)
+
+            except Group.DoesNotExist:
+                print("El grupo 'Usuari' no existe. Crea el grupo en el admin de Django.")
+
+        # Genera un token
+        token = secrets.token_hex(16)
+        user.auth_token = token
+        user.save()
+        return api.create_response(request, {"token": token}, status=200)
+    except Exception as e:
+        print("ERROR GOOGLE LOGIN:", e)
+        traceback.print_exc()
+        return api.create_response(request, {"detail": f"Token invàlid: {str(e)}"}, status=400)
