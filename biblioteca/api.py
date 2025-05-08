@@ -573,12 +573,8 @@ def search_exemplars(
                     continue
 
                 # Editorial only exists on certain subclasses
-                editorial = None
-                if isinstance(cataleg, Llibre):
-                    editorial = cataleg.editorial
-                elif isinstance(cataleg, Revista):
-                    editorial = cataleg.editorial
-
+                editorial = getattr(cataleg, "editorial", None)
+                
                 if editorial and text in editorial.lower():
                     filtered.append(ex)
 
@@ -604,14 +600,6 @@ def search_exemplars(
                 cataleg = Revista.objects.get(pk=cataleg.pk)
             except Revista.DoesNotExist:
                 pass  # stays as plain Cataleg
-            
-        editorial = None
-
-        # Manually check which subclass `cataleg` is
-        if isinstance(cataleg, Llibre):
-            editorial = cataleg.editorial
-        elif isinstance(cataleg, Revista):
-            editorial = cataleg.editorial
 
         exemplars_data.append({
             "id": ex.id,
@@ -619,8 +607,9 @@ def search_exemplars(
             "exclos_prestec": ex.exclos_prestec,
             "baixa": ex.baixa,
             "titol": cataleg.titol,
-            "autor": cataleg.autor,
-            "editorial": editorial,
+            "autor": getattr(cataleg, "autor", None),
+            "editorial": getattr(cataleg, "editorial", None),
+            "cdu": cataleg.CDU,
             "centre": ex.centre.nom if ex.centre else None,
         })
 
