@@ -444,6 +444,141 @@ def get_catalog_item(request, model_type: str, item_id: int):
         raise HttpError(404, f"{model_type} with id {item_id} not found")
 
 
+def registre_to_int(registre: str) -> Optional[int]:
+    match = re.match(r"EX-(\d{4})-(\d{6})", registre)
+    if match:
+        year, number = match.groups()
+        return int(f"{year}{number}")
+    return None
+
+@api.get("/exemplars/search", response=Dict[str, Any], auth=AuthBearer())
+def search_exemplars(
+    request,
+    text: Optional[str] = None,
+    page: int = Query(1)
+):
+    user = request.auth  # Important: use `request.auth` when using AuthBearer
+
+    if not hasattr(user, "centre") or not user.centre:
+        raise HttpError(403, "Usuari no té centre")
+
+    queryset = Exemplar.objects.select_related("cataleg", "centre")
+    total_items = 0
+
+    # Superusers see everything
+    if not user.is_superuser:
+        queryset = queryset.filter(centre=user.centre)
+
+    # If text is provided, try to extract a registre range or exact registre from it
+    if text:        
+        # Check for a registre range pattern like "EX-2020-123456 to EX-2020-654321"
+        range_match = re.search(r"EX-(\d{4})-(\d{6})\s*to\s*EX-(\d{4})-(\d{6})", text)
+        if range_match:
+            # Extract the registre range
+            registre_min = f"EX-{range_match.group(1)}-{range_match.group(2)}"
+            registre_max = f"EX-{range_match.group(3)}-{range_match.group(4)}"
+            
+            # Convert registre to int values
+            min_val = registre_to_int(registre_min)
+            max_val = registre_to_int(registre_max)
+
+            # Filter by the range
+            filtered_ids = []
+            for ex in queryset:
+                reg_val = registre_to_int(ex.registre)
+                if reg_val is not None:
+                    if (min_val is None or reg_val >= min_val) and (max_val is None or reg_val <= max_val):
+                        filtered_ids.append(ex.id)
+            queryset = queryset.filter(id__in=filtered_ids)
+            total_items = queryset.count()
+            
+        # If text is a specific registre like "EX-2020-123456"
+        elif re.match(r"EX-\d{4}-\d{6}", text):
+            queryset = queryset.filter(registre=text)
+            total_items = queryset.count()
+            
+        # Text search: title, author, or editorial
+        else:
+            text = text.lower()
+            filtered = []
+            
+            for ex in queryset:
+                cataleg = ex.cataleg
+                
+                try:
+                    cataleg = Llibre.objects.get(pk=cataleg.pk)
+                except Llibre.DoesNotExist:
+                    try:
+                        cataleg = Revista.objects.get(pk=cataleg.pk)
+                    except Revista.DoesNotExist:
+                        pass  # stays as plain Cataleg
+                
+                # Title and author are safe to check
+                if (
+                    (cataleg.titol and text in cataleg.titol.lower()) or
+                    (getattr(cataleg, "autor", None) and text in cataleg.autor.lower())
+                ):
+                    filtered.append(ex)
+                    continue
+
+                # Editorial only exists on certain subclasses
+                editorial = None
+                if isinstance(cataleg, Llibre):
+                    editorial = cataleg.editorial
+                elif isinstance(cataleg, Revista):
+                    editorial = cataleg.editorial
+
+                if editorial and text in editorial.lower():
+                    filtered.append(ex)
+
+            queryset = filtered
+            total_items = len(queryset)
+
+    # Pagination
+    items_per_page = 10
+    total_pages = ceil(total_items / items_per_page) or 1
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * items_per_page
+    paginated = queryset[start:start + items_per_page]
+        
+    exemplars_data = []
+
+    for ex in paginated:
+        cataleg = ex.cataleg
+        
+        try:
+            cataleg = Llibre.objects.get(pk=cataleg.pk)
+        except Llibre.DoesNotExist:
+            try:
+                cataleg = Revista.objects.get(pk=cataleg.pk)
+            except Revista.DoesNotExist:
+                pass  # stays as plain Cataleg
+            
+        editorial = None
+
+        # Manually check which subclass `cataleg` is
+        if isinstance(cataleg, Llibre):
+            editorial = cataleg.editorial
+        elif isinstance(cataleg, Revista):
+            editorial = cataleg.editorial
+
+        exemplars_data.append({
+            "id": ex.id,
+            "registre": ex.registre,
+            "exclos_prestec": ex.exclos_prestec,
+            "baixa": ex.baixa,
+            "titol": cataleg.titol,
+            "autor": cataleg.autor,
+            "editorial": editorial,
+            "centre": ex.centre.nom if ex.centre else None,
+        })
+
+    return {
+        "current_page": page,
+        "total_pages": total_pages,
+        "results": exemplars_data
+    }
+
 @api.post("/llibres/")
 def post_llibres(request, payload: LlibreIn):
     llibre = Llibre.objects.create(**payload.dict())
