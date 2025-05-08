@@ -544,8 +544,8 @@ def search_exemplars(
 
     # If text is provided, try to extract a registre range or exact registre from it
     if text:        
-        # Check for a registre range pattern like "EX-2020-123456 to EX-2020-654321"
-        range_match = re.search(r"EX-(\d{4})-(\d{6})\s*to\s*EX-(\d{4})-(\d{6})", text)
+        # Check for a registre range pattern like "EX-2020-123456_to_EX-2020-654321"
+        range_match = re.search(r"EX-(\d{4})-(\d{6})_to_EX-(\d{4})-(\d{6})", text)
         if range_match:
             # Extract the registre range
             registre_min = f"EX-{range_match.group(1)}-{range_match.group(2)}"
