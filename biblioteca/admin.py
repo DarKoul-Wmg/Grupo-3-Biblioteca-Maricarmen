@@ -1,36 +1,36 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.utils.html import escape, mark_safe
-from datetime import datetime
 from django.core.exceptions import ValidationError
 from django import forms
-
+from django.db.models import Max
+from datetime import datetime
 
 from .models import *
 from .forms import LlibreForm
 
-def generate_unique_exemplar_code_for_catalegItem(cataleg):
-    year = datetime.now().year
-    prefix = f"EX-{year}"
-
-    # Get highest existing number for this catalog item
-    latest_exemplar = (
-        Exemplar.objects
-        .filter(cataleg=cataleg, registre__startswith=prefix)
-        .order_by("-registre")
-        .first()
-    )
-
-    if latest_exemplar and latest_exemplar.registre:
-        try:
-            last_number = int(latest_exemplar.registre.split("-")[-1])
-        except (IndexError, ValueError):
-            last_number = 0
+def generate_unique_exemplar_code():
+    # Get the current year
+    current_year = datetime.now().year
+    
+    # Find the highest number for the current year in the Exemplar model
+    last_number = Exemplar.objects.filter(registre__startswith=f"EX-{current_year}-").aggregate(Max('registre'))
+    
+    # Extract the last used number (if any)
+    last_number = last_number.get('registre__max')
+    if last_number:
+        # Extract the numeric part of the last code (NNNNNN)
+        last_num = int(last_number.split('-')[-1])
     else:
-        last_number = 0
-
-    new_number = last_number + 1
-    return f"{prefix}-{str(new_number).zfill(6)}"
+        last_num = 0  # If no exemplar exists for the current year, start at 0
+    
+    # Increment to create a new unique number
+    new_number = last_num + 1
+    
+    # Format the new code: EX-YYYY-NNNNNN
+    new_code = f"EX-{current_year}-{new_number:06d}"
+    
+    return new_code
 
 class CategoriaAdmin(admin.ModelAdmin):
 	list_display = ('nom','parent')
@@ -65,7 +65,6 @@ class ExemplarsInline(admin.TabularInline):
     fields = ('registre', 'exclos_prestec', 'baixa', 'centre')  # Removed 'pk' field
 
     def get_readonly_fields(self, request, obj=None):
-        # Always make 'registre' readonly for everyone
         readonly = list(super().get_readonly_fields(request, obj))
         readonly.append('registre')  # Ensure 'registre' is readonly
         if not request.user.is_superuser:
@@ -86,8 +85,9 @@ class ExemplarsInline(admin.TabularInline):
                 instance = super().save_new(form, commit=False)
 
                 # Auto-generate registre if not set
-                instance.registre = generate_unique_exemplar_code_for_catalegItem(instance.cataleg)
-                
+                if not instance.registre:
+                    instance.registre = generate_unique_exemplar_code()
+
                 if not request.user.is_superuser:
                     if not request.user.centre:
                         raise ValidationError("L'usuari no té cap centre assignat.")
@@ -191,6 +191,20 @@ class ExemplarAdmin(admin.ModelAdmin):
     search_fields = ('registre', 'cataleg__titol')
     list_filter = ('centre', 'exclos_prestec', 'baixa')
     ordering = ('cataleg__titol',)
+    fields = ('registre', 'cataleg', 'centre', 'exclos_prestec', 'baixa')
+    
+    def get_readonly_fields(self, request, obj=None):
+        readonly = list(super().get_readonly_fields(request, obj))
+        readonly.append('registre')  # Ensure 'registre' is readonly
+        if not request.user.is_superuser:
+            readonly.append('centre')  # Make 'centre' readonly for non-superusers
+        return readonly
+    
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        return qs.filter(centre=request.user.centre)
 
     def cataleg_nom(self, obj):
         return obj.cataleg.titol
@@ -198,11 +212,29 @@ class ExemplarAdmin(admin.ModelAdmin):
     cataleg_nom.short_description = 'Títol Catàleg'
 
     def cataleg_tipus(self, obj):
-    # Devuelve el tipo real del catálogo (Llibre, Revista, CD, etc.)
+        # Devuelve el tipo real del catálogo (Llibre, Revista, CD, etc.)
         for tipus in ['llibre', 'revista', 'cd', 'dvd', 'br', 'dispositiu']:
             if hasattr(obj.cataleg, tipus):
                 return tipus.capitalize()
         return "Catàleg"
     cataleg_tipus.short_description = 'Tipus'
+
+    def save_model(self, request, obj, form, change):
+        """
+        Override the save_model method to auto-generate the 'registre' field
+        when a new Exemplar is created.
+        """
+        if not obj.registre:  # Only generate 'registre' if it's not set already
+            obj.registre = generate_unique_exemplar_code()
+        
+        # Ensure the 'centre' is set correctly for non-superusers
+        if not request.user.is_superuser and not obj.centre:
+            if not request.user.centre:
+                raise ValidationError("L'usuari no té cap centre assignat.")
+            obj.centre = request.user.centre
+
+        # Save the object
+        super().save_model(request, obj, form, change)
+
 
 admin.site.register(Exemplar, ExemplarAdmin)

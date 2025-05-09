@@ -1,0 +1,39 @@
+<!-- Espacio antes del contenido -->
+<p style="height: 10px">&nbsp;</p>
+
+<table
+  style="
+    width: 100%;
+    border-collapse: collapse;
+    font-family: Arial, sans-serif;
+    font-size: 10px;
+    border: 1px solid black;
+  "
+>
+  <style>
+    td {
+      border: 1px solid black;
+    }
+  </style>
+
+  {% for page in pages %} {% for pair in page %}
+  <tr>
+    {% for item in pair %}
+    <td style="width: 25%; text-align: left">
+      <p style="margin-bottom: 0px">{{ item.center }}</p>
+      <img
+        src="{{ item.image_base64 }}"
+        style="max-width: 100%; margin-top: 0; height: 100px"
+      />
+    </td>
+    <td style="width: 25%; vertical-align: middle; padding: 1px">
+      <strong>{{ item.title }}</strong><br />
+      CDU: {{ item.CDU }}
+    </td>
+    {% endfor %} {% if pair|length == 1 %}
+    <td style="width: 25%"></td>
+    <td style="width: 25%"></td>
+    {% endif %}
+  </tr>
+  {% endfor %} {% endfor %}
+</table>
