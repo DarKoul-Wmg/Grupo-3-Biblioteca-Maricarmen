@@ -1,0 +1,40 @@
+<style>
+  @page {
+    margin-top: 0.6cm;
+    margin-left: 0.8cm;
+    margin-right: 0.8cm;
+    margin-bottom: 0.3cm;
+  }
+</style>
+<body>
+  <table
+    style="
+      width: 100%;
+      border-collapse: collapse;
+      font-family: Arial, sans-serif;
+      font-size: 10px;
+    "
+  >
+    {% for page in pages %} {% for pair in page %}
+    <tr>
+      {% for item in pair %}
+      <td style="width: 25%">
+        <div style="padding: 0; overflow: hidden; position: relative">
+          <p style="margin: 0; padding: 0; position: relative; z-index: 2">
+            {{ item.center }}
+          </p>
+          <img src="{{ item.image_base64 }}" style="margin: 0 5px" />
+        </div>
+      </td>
+      <td style="width: 25%; vertical-align: middle; padding-left: 2px">
+        <strong>{{ item.title }}</strong><br />
+        CDU: {{ item.CDU }}
+      </td>
+      {% endfor %} {% if pair|length == 1 %}
+      <td style="width: 25%"></td>
+      <td style="width: 25%"></td>
+      {% endif %}
+    </tr>
+    {% endfor %} {% endfor %}
+  </table>
+</body>

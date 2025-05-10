@@ -1,8 +1,9 @@
 import random
 import unicodedata
 from faker import Faker
-from datetime import timedelta
+from datetime import timedelta, datetime
 from django.utils.timezone import now
+from django.db.models import Max
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import Group  # Importa el modelo Group
 
@@ -44,6 +45,29 @@ def get_faker():
     return random.choice(fakers)
 
 # ========== FUNCIONES ==========
+
+def generate_unique_exemplar_code():
+    # Get the current year
+    current_year = datetime.now().year
+    
+    # Find the highest number for the current year in the Exemplar model
+    last_number = Exemplar.objects.filter(registre__startswith=f"EX-{current_year}-").aggregate(Max('registre'))
+    
+    # Extract the last used number (if any)
+    last_number = last_number.get('registre__max')
+    if last_number:
+        # Extract the numeric part of the last code (NNNNNN)
+        last_num = int(last_number.split('-')[-1])
+    else:
+        last_num = 0  # If no exemplar exists for the current year, start at 0
+    
+    # Increment to create a new unique number
+    new_number = last_num + 1
+    
+    # Format the new code: EX-YYYY-NNNNNN
+    new_code = f"EX-{current_year}-{new_number:06d}"
+    
+    return new_code
 
 def crear_centres():
     centres = []
@@ -193,7 +217,7 @@ def crear_exemplars(llibres, centres):
         for _ in range(random.randint(1, MAX_EJEMPLARS_PER_LLIBRE)):
             exemplar = Exemplar.objects.create(
                 cataleg=llibre,
-                registre=f"{get_faker().ean(length=13)}",
+                registre=generate_unique_exemplar_code(),
                 centre=random.choice(centres),
                 exclos_prestec=random.choice([True, False]),
                 baixa=False,
@@ -324,7 +348,7 @@ def crear_exemplars_catalegs(catalegs, centres):
         for _ in range(random.randint(1, MAX_EJEMPLARS_PER_LLIBRE)):
             Exemplar.objects.create(
                 cataleg=cataleg,
-                registre=f"{get_faker().ean(length=13)}",
+                registre=generate_unique_exemplar_code(),
                 centre=random.choice(centres),
                 exclos_prestec=random.choice([True, False]),
                 baixa=False,

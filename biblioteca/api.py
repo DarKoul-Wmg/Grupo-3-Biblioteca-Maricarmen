@@ -1,4 +1,10 @@
 from django.contrib.auth import authenticate
+from django.db.models import Q, Value
+from django.db.models.functions import Concat
+from django.contrib.auth.models import Group
+from django.db import IntegrityError
+from django.http import HttpRequest
+from .models import *
 from ninja import NinjaAPI, Schema, File, Form, Query
 from ninja.files import UploadedFile
 from ninja.errors import HttpError
@@ -7,15 +13,37 @@ from ninja.security import HttpBasicAuth, HttpBearer
 from django.http import HttpRequest
 from django.db.models import Q, Value
 from django.db.models.functions import Concat
+from pathlib import Path
+from typing import List
+from django.http import HttpResponse
+from django.template.loader import get_template
+from io import BytesIO
+import base64
+from xhtml2pdf import pisa
+from barcode.writer import ImageWriter
+from datetime import datetime
 
+# Importa las librerías necesarias para generar códigos y PDF
+import barcode
 from .models import *
 from typing import List, Optional, Union, Dict, Any
 import re  # For email validation
 import io  # For handling in-memory file operations
 import csv  # For CSV file handling
 import secrets
+import json
+import traceback
 from math import ceil
 from datetime import date, timedelta
+
+from google.oauth2 import id_token
+from google.auth.transport import requests
+import requests as pyrequests
+from jose import jwt
+import urllib.request
+from django.core.files.base import ContentFile
+import os
+
 
 api = NinjaAPI()
 
@@ -39,7 +67,6 @@ class BasicAuth(HttpBasicAuth):
         except Exception as e:
             raise HttpError(500, "Ha ocurrido un error al autenticar el usuario.")
 
-
 # Autenticació per Token Bearer
 class AuthBearer(HttpBearer):
     def authenticate(self, request, token):
@@ -48,8 +75,6 @@ class AuthBearer(HttpBearer):
             return user
         except Usuari.DoesNotExist:
             return None
-
-
 
 class UsuariOut(Schema):
     id: int
@@ -168,6 +193,12 @@ class ExemplarInLlibreOut(Schema):
     baixa: bool
     centre: Optional[CentreOut]
 
+class LlibreWithExemplarsOut(Schema):
+    id: int
+    titol: str
+    autor: Optional[str]
+    exemplars: List[ExemplarInLlibreOut] = []
+
 class LlibreDetailOut(CatalegOut):
     editorial: Optional[str]
     ISBN: Optional[str]
@@ -188,12 +219,36 @@ class LlibreIn(Schema):
     editorial: str
 
 
-@api.get("/llibres", response=List[LlibreOut])
-@api.get("/llibres/", response=List[LlibreOut])
+# @api.get("/llibres", response=List[LlibreOut])
+# @api.get("/llibres/", response=List[LlibreOut])
+@api.get("/llibres", response=List[LlibreWithExemplarsOut])
+@api.get("/llibres/", response=List[LlibreWithExemplarsOut])
 #@api.get("/llibres/", response=List[LlibreOut], auth=AuthBearer())
 def get_llibres(request):
-    qs = Llibre.objects.all()
-    return qs
+    llibres = Llibre.objects.all()
+    result = []
+    for llibre in llibres:
+        exemplars = Exemplar.objects.filter(cataleg=llibre)
+        exemplars_out = [
+            ExemplarInLlibreOut(
+                id=ex.id,
+                registre=ex.registre,
+                exclos_prestec=ex.exclos_prestec,
+                baixa=ex.baixa,
+                centre=CentreOut(nom=ex.centre.nom) if ex.centre else None,
+                disponible=not Prestec.objects.filter(exemplar=ex, data_retorn__gte=date.today()).exists()
+            )
+            for ex in exemplars
+        ]
+        result.append(
+            LlibreWithExemplarsOut(
+                id=llibre.id,
+                titol=llibre.titol,
+                autor=llibre.autor,
+                exemplars=exemplars_out
+            )
+        )
+    return result
 
 @api.get("/llibres/search", response=Dict[str, Any])
 def search_llibres(request, text: str, page: int = Query(1)):
@@ -284,6 +339,22 @@ def search_catalegs(request, text: str, page: int = Query(1)):
             "autor": getattr(obj, "autor", None),
             "type": obj.__class__.__name__,
         }
+         # Añadir ejemplares si existen para cualquier modelo
+        exemplars = Exemplar.objects.filter(cataleg=obj)
+        base_data["exemplars"] = [
+            {
+                "id": ex.id,
+                "registre": ex.registre,
+                "exclos_prestec": ex.exclos_prestec,
+                "baixa": ex.baixa,
+                "centre": {"nom": ex.centre.nom if ex.centre else None},
+                "disponible": not Prestec.objects.filter(
+                    exemplar=ex,
+                    data_retorn__gte=date.today()
+                ).exists()
+            }
+            for ex in exemplars
+        ]
 
         if isinstance(obj, Llibre):
             schema_data = LlibreOut.from_orm(obj).dict()
@@ -432,7 +503,12 @@ def get_catalog_item(request, model_type: str, item_id: int):
                 "baixa": ex.baixa,
                 "centre": {
                     "nom": ex.centre.nom if ex.centre else None
-                }
+                },
+                "disponible": not Prestec.objects.filter(
+                    exemplar=ex,
+                    data_retorn__gte=date.today()
+                ).exists()
+
             }
             for ex in exemplars
         ]
@@ -443,6 +519,130 @@ def get_catalog_item(request, model_type: str, item_id: int):
     except model_class.DoesNotExist:
         raise HttpError(404, f"{model_type} with id {item_id} not found")
 
+
+def registre_to_int(registre: str) -> Optional[int]:
+    match = re.match(r"EX-(\d{4})-(\d{6})", registre)
+    if match:
+        year, number = match.groups()
+        return int(f"{year}{number}")
+    return None
+
+@api.get("/exemplars/search", response=Dict[str, Any], auth=AuthBearer())
+def search_exemplars(
+    request,
+    text: Optional[str] = None,
+    page: int = Query(1)
+):
+    user = request.auth  # Important: use `request.auth` when using AuthBearer
+
+    if not hasattr(user, "centre") or not user.centre:
+        raise HttpError(403, "Usuari no té centre")
+
+    queryset = Exemplar.objects.select_related("cataleg", "centre")
+    total_items = 0
+
+    # Superusers see everything
+    if not user.is_superuser:
+        queryset = queryset.filter(centre=user.centre)
+
+    # If text is provided, try to extract a registre range or exact registre from it
+    if text:        
+        # Check for a registre range pattern like "EX-2020-123456_to_EX-2020-654321"
+        range_match = re.search(r"EX-(\d{4})-(\d{6})_to_EX-(\d{4})-(\d{6})", text)
+        if range_match:
+            # Extract the registre range
+            registre_min = f"EX-{range_match.group(1)}-{range_match.group(2)}"
+            registre_max = f"EX-{range_match.group(3)}-{range_match.group(4)}"
+            
+            # Convert registre to int values
+            min_val = registre_to_int(registre_min)
+            max_val = registre_to_int(registre_max)
+
+            # Filter by the range
+            filtered_ids = []
+            for ex in queryset:
+                reg_val = registre_to_int(ex.registre)
+                if reg_val is not None:
+                    if (min_val is None or reg_val >= min_val) and (max_val is None or reg_val <= max_val):
+                        filtered_ids.append(ex.id)
+            queryset = queryset.filter(id__in=filtered_ids)
+            total_items = queryset.count()
+            
+        # If text is a specific registre like "EX-2020-123456"
+        elif re.match(r"EX-\d{4}-\d{6}", text):
+            queryset = queryset.filter(registre=text)
+            total_items = queryset.count()
+            
+        # Text search: title, author, or editorial
+        else:
+            text = text.lower()
+            filtered = []
+            
+            for ex in queryset:
+                cataleg = ex.cataleg
+                
+                try:
+                    cataleg = Llibre.objects.get(pk=cataleg.pk)
+                except Llibre.DoesNotExist:
+                    try:
+                        cataleg = Revista.objects.get(pk=cataleg.pk)
+                    except Revista.DoesNotExist:
+                        pass  # stays as plain Cataleg
+                
+                # Title and author are safe to check
+                if (
+                    (cataleg.titol and text in cataleg.titol.lower()) or
+                    (getattr(cataleg, "autor", None) and text in cataleg.autor.lower())
+                ):
+                    filtered.append(ex)
+                    continue
+
+                # Editorial only exists on certain subclasses
+                editorial = getattr(cataleg, "editorial", None)
+                
+                if editorial and text in editorial.lower():
+                    filtered.append(ex)
+
+            queryset = filtered
+            total_items = len(queryset)
+
+    # Pagination
+    items_per_page = 10
+    total_pages = ceil(total_items / items_per_page) or 1
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * items_per_page
+    paginated = queryset[start:start + items_per_page]
+        
+    exemplars_data = []
+
+    for ex in paginated:
+        cataleg = ex.cataleg
+        
+        try:
+            cataleg = Llibre.objects.get(pk=cataleg.pk)
+        except Llibre.DoesNotExist:
+            try:
+                cataleg = Revista.objects.get(pk=cataleg.pk)
+            except Revista.DoesNotExist:
+                pass  # stays as plain Cataleg
+
+        exemplars_data.append({
+            "id": ex.id,
+            "registre": ex.registre,
+            "exclos_prestec": ex.exclos_prestec,
+            "baixa": ex.baixa,
+            "titol": cataleg.titol,
+            "autor": getattr(cataleg, "autor", None),
+            "editorial": getattr(cataleg, "editorial", None),
+            "cdu": cataleg.CDU,
+            "centre": ex.centre.nom if ex.centre else None,
+        })
+
+    return {
+        "current_page": page,
+        "total_pages": total_pages,
+        "results": exemplars_data
+    }
 
 @api.post("/llibres/")
 def post_llibres(request, payload: LlibreIn):
@@ -505,9 +705,6 @@ def crear_prestec(request, usuari_id: int, exemplar_id: int, anotacions: str = "
         raise HttpError(404, "Exemplar no trobat")
 
     try:
-        # Update the exemplar to indicate it's checked out
-        exemplar.exclos_prestec = True
-        exemplar.save()
         
         data_prestec = date.today()
         data_retorn = data_prestec + timedelta(weeks=1)
@@ -722,3 +919,211 @@ def import_users(request, file: UploadedFile = File(...)):
     }
 
     return summary
+
+@api.post("/google-login")
+@api.post("/google-login/")
+def google_login(request):
+    body = json.loads(request.body.decode())
+    id_token_str = body.get("id_token")
+    if not id_token_str:
+        print("No id_token found in request body")
+        return api.create_response(request, {"detail": "No id_token"}, status=400)
+    try:
+        google_client_id = os.environ.get("GOOGLE_CLIENT_ID")
+        idinfo = id_token.verify_oauth2_token(
+            id_token_str,
+            requests.Request(),
+            google_client_id
+        )
+        email = idinfo["email"]
+        first_name = idinfo.get("given_name", "")
+        last_name = idinfo.get("family_name", "")
+        picture_url = idinfo.get("picture", "")
+
+        user = Usuari.objects.filter(email=email).first()
+        if not user:
+            username_base = email.split("@")[0]
+            username = username_base
+            counter = 1
+            while Usuari.objects.filter(username=username).exists():
+                username = f"{username_base}{counter}"
+                counter += 1
+
+            user = Usuari(
+                email=email,
+                username=username,
+                first_name=first_name,
+                last_name=last_name,
+            )
+
+            # Descargar y guardar la imagen de perfil si existe
+            if picture_url:
+                try:
+                    result = urllib.request.urlretrieve(picture_url)
+                    with open(result[0], "rb") as f:
+                        user.imatge.save(f"{username}_google.jpg", ContentFile(f.read()), save=False)
+                except Exception as e:
+                    print("No se pudo descargar la imagen de Google:", e)
+
+            user.save()
+
+            try:
+                group = Group.objects.get(name="Usuari")
+                user.groups.add(group)
+            except Group.DoesNotExist:
+                print("El grupo 'Usuari' no existe. Crea el grupo en el admin de Django.")
+
+        token = secrets.token_hex(16)
+        user.auth_token = token
+        user.save()
+        return api.create_response(request, {"token": token}, status=200)
+    except Exception as e:
+        print("ERROR GOOGLE LOGIN:", e)
+        traceback.print_exc()
+        return api.create_response(request, {"detail": f"Token invàlid: {str(e)}"}, status=400)
+    
+
+@api.post("/microsoft-login/")
+def microsoft_login(request):
+    body = json.loads(request.body.decode())
+    id_token_str = body.get("id_token")
+    if not id_token_str:
+        return api.create_response(request, {"detail": "No id_token"}, status=400)
+    try:
+        # Obtén las claves públicas de Microsoft
+        microsoft_client_id = os.environ.get("MICROSOFT_CLIENT_ID")
+        jwks_uri = "https://login.microsoftonline.com/common/discovery/v2.0/keys"
+        jwks = pyrequests.get(jwks_uri).json()
+        # Decodifica el token
+        claims = jwt.decode(
+            id_token_str,
+            jwks,
+            algorithms=["RS256"],
+            audience=microsoft_client_id
+        )
+        email = claims.get("email") or claims.get("preferred_username")
+        first_name = claims.get("given_name", "")
+        last_name = claims.get("family_name", "")
+
+        # Si no hay given_name o family_name, intenta extraerlos de "name"
+        if not first_name or not last_name:
+            full_name = claims.get("name", "")
+            if full_name:
+                parts = full_name.split(" ", 1)
+                first_name = parts[0]
+                last_name = parts[1] if len(parts) > 1 else ""
+
+        # Busca o crea el usuario igual que en Google
+        user = Usuari.objects.filter(email=email).first()
+        if not user:
+            username_base = email.split("@")[0]
+            username = username_base
+            counter = 1
+            while Usuari.objects.filter(username=username).exists():
+                username = f"{username_base}{counter}"
+                counter += 1
+            user = Usuari.objects.create(
+                email=email,
+                username=username,
+                first_name=first_name,
+                last_name=last_name,
+            )
+            try:
+                group = Group.objects.get(name="Usuari")
+                user.groups.add(group)
+            except Group.DoesNotExist:
+                print("El grupo 'Usuari' no existe. Crea el grupo en el admin de Django.")
+
+        # Genera un token propio
+        token = secrets.token_hex(16)
+        user.auth_token = token
+        user.save()
+        return api.create_response(request, {"token": token}, status=200)
+    except Exception as e:
+        print("ERROR MICROSOFT LOGIN:", e)
+        traceback.print_exc()
+        return api.create_response(request, {"detail": f"Token invàlid: {str(e)}"}, status=400)
+    
+class BarcodeRequest(Schema):
+    exemplars: List[Dict[str, str]]  
+
+
+
+@api.post("/generate-exemplars-pdf/")
+
+def generate_barcode_pdf(request, data: BarcodeRequest):
+    print(f"[DEBUG] Datos recibidos: {data}")  # Agrega una impresión de los datos completos recibidos
+    exemplars = data.exemplars
+    print(f"[DEBUG] Códigos recibidos: {exemplars}")
+
+    barcode_images = []
+    options = {
+        'module_height': 2,
+        'font_size': 4,
+        'text_distance': 2.0,
+        'quiet_zone': 0.4
+    }
+
+    for exemplar in exemplars:
+        try:
+            buffer = BytesIO()
+            code_type = barcode.get_barcode_class('code128')
+            barcode_img = code_type(exemplar["id"].replace("-",""), writer=ImageWriter())  
+            barcode_img.write(buffer, options=options)
+            img_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+            image_data_uri = f"data:image/png;base64,{img_base64}"
+            barcode_images.append({
+                'code': exemplar['id'],  
+                'image_base64': image_data_uri,
+                'CDU': exemplar['cdu'],  
+                'title': exemplar['title'],
+                'center': exemplar['center'] 
+
+            })
+        except Exception as e:
+            print(f"[ERROR] Error generando código '{exemplar['id']}': {e}")
+            continue
+
+
+
+        except Exception as e:
+            print(f"[ERROR] Error generando código '{exemplar.id}': {e}")
+            continue
+
+    if not barcode_images:
+        return Response(content="No se pudieron generar códigos válidos.", status_code=400)
+
+    items_per_page = 17 * 4
+    pages = [barcode_images[i:i+items_per_page] for i in range(0, len(barcode_images), items_per_page)]
+
+    # Agrupar de 2 en 2 para facilitar el renderizado
+    grouped_pages = []
+    for page in pages:
+        grouped_items = [page[i:i+2] for i in range(0, len(page), 2)]
+        grouped_pages.append(grouped_items)
+
+    context = {
+        'pages': grouped_pages,
+    }
+
+    pdf_bytes = html_to_pdf('barcode_template.html', context)
+
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = 'inline; filename="barcodes.pdf"'
+    return response
+
+
+def html_to_pdf(template_src, context_dict={}):
+    try:
+        template = get_template(template_src)
+        html = template.render(context_dict)
+        result = io.BytesIO()
+        pdf = pisa.pisaDocument(io.BytesIO(html.encode("UTF-8")), result)
+        if not pdf.err:
+            return result.getvalue()
+        else:
+            print("[ERROR] Error al renderizar PDF con xhtml2pdf")
+            return None
+    except Exception as e:
+        print(f"[ERROR] Error al generar PDF: {e}")
+        return None
