@@ -919,8 +919,8 @@ def generate_barcode_pdf(request, data: BarcodeRequest):
 
     barcode_images = []
     options = {
-        'module_height': 4.9,
-        'font_size': 7,
+        'module_height': 2,
+        'font_size': 4,
         'text_distance': 2.0,
         'quiet_zone': 0.4
     }
