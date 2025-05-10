@@ -1,4 +1,10 @@
 from django.contrib.auth import authenticate
+from django.db.models import Q, Value
+from django.db.models.functions import Concat
+from django.contrib.auth.models import Group
+from django.db import IntegrityError
+from django.http import HttpRequest
+from .models import *
 from ninja import NinjaAPI, Schema, File, Form, Query
 from ninja.files import UploadedFile
 from ninja.errors import HttpError
@@ -16,6 +22,7 @@ import base64
 from xhtml2pdf import pisa
 from barcode.writer import ImageWriter
 from datetime import datetime
+
 # Importa las librerías necesarias para generar códigos y PDF
 import barcode
 from .models import *
@@ -24,8 +31,19 @@ import re  # For email validation
 import io  # For handling in-memory file operations
 import csv  # For CSV file handling
 import secrets
+import json
+import traceback
 from math import ceil
 from datetime import date, timedelta
+
+from google.oauth2 import id_token
+from google.auth.transport import requests
+import requests as pyrequests
+from jose import jwt
+import urllib.request
+from django.core.files.base import ContentFile
+import os
+
 
 api = NinjaAPI()
 
@@ -49,7 +67,6 @@ class BasicAuth(HttpBasicAuth):
         except Exception as e:
             raise HttpError(500, "Ha ocurrido un error al autenticar el usuario.")
 
-
 # Autenticació per Token Bearer
 class AuthBearer(HttpBearer):
     def authenticate(self, request, token):
@@ -58,8 +75,6 @@ class AuthBearer(HttpBearer):
             return user
         except Usuari.DoesNotExist:
             return None
-
-
 
 class UsuariOut(Schema):
     id: int
@@ -905,6 +920,130 @@ def import_users(request, file: UploadedFile = File(...)):
 
     return summary
 
+@api.post("/google-login")
+@api.post("/google-login/")
+def google_login(request):
+    body = json.loads(request.body.decode())
+    id_token_str = body.get("id_token")
+    if not id_token_str:
+        print("No id_token found in request body")
+        return api.create_response(request, {"detail": "No id_token"}, status=400)
+    try:
+        google_client_id = os.environ.get("GOOGLE_CLIENT_ID")
+        idinfo = id_token.verify_oauth2_token(
+            id_token_str,
+            requests.Request(),
+            google_client_id
+        )
+        email = idinfo["email"]
+        first_name = idinfo.get("given_name", "")
+        last_name = idinfo.get("family_name", "")
+        picture_url = idinfo.get("picture", "")
+
+        user = Usuari.objects.filter(email=email).first()
+        if not user:
+            username_base = email.split("@")[0]
+            username = username_base
+            counter = 1
+            while Usuari.objects.filter(username=username).exists():
+                username = f"{username_base}{counter}"
+                counter += 1
+
+            user = Usuari(
+                email=email,
+                username=username,
+                first_name=first_name,
+                last_name=last_name,
+            )
+
+            # Descargar y guardar la imagen de perfil si existe
+            if picture_url:
+                try:
+                    result = urllib.request.urlretrieve(picture_url)
+                    with open(result[0], "rb") as f:
+                        user.imatge.save(f"{username}_google.jpg", ContentFile(f.read()), save=False)
+                except Exception as e:
+                    print("No se pudo descargar la imagen de Google:", e)
+
+            user.save()
+
+            try:
+                group = Group.objects.get(name="Usuari")
+                user.groups.add(group)
+            except Group.DoesNotExist:
+                print("El grupo 'Usuari' no existe. Crea el grupo en el admin de Django.")
+
+        token = secrets.token_hex(16)
+        user.auth_token = token
+        user.save()
+        return api.create_response(request, {"token": token}, status=200)
+    except Exception as e:
+        print("ERROR GOOGLE LOGIN:", e)
+        traceback.print_exc()
+        return api.create_response(request, {"detail": f"Token invàlid: {str(e)}"}, status=400)
+    
+
+@api.post("/microsoft-login/")
+def microsoft_login(request):
+    body = json.loads(request.body.decode())
+    id_token_str = body.get("id_token")
+    if not id_token_str:
+        return api.create_response(request, {"detail": "No id_token"}, status=400)
+    try:
+        # Obtén las claves públicas de Microsoft
+        microsoft_client_id = os.environ.get("MICROSOFT_CLIENT_ID")
+        jwks_uri = "https://login.microsoftonline.com/common/discovery/v2.0/keys"
+        jwks = pyrequests.get(jwks_uri).json()
+        # Decodifica el token
+        claims = jwt.decode(
+            id_token_str,
+            jwks,
+            algorithms=["RS256"],
+            audience=microsoft_client_id
+        )
+        email = claims.get("email") or claims.get("preferred_username")
+        first_name = claims.get("given_name", "")
+        last_name = claims.get("family_name", "")
+
+        # Si no hay given_name o family_name, intenta extraerlos de "name"
+        if not first_name or not last_name:
+            full_name = claims.get("name", "")
+            if full_name:
+                parts = full_name.split(" ", 1)
+                first_name = parts[0]
+                last_name = parts[1] if len(parts) > 1 else ""
+
+        # Busca o crea el usuario igual que en Google
+        user = Usuari.objects.filter(email=email).first()
+        if not user:
+            username_base = email.split("@")[0]
+            username = username_base
+            counter = 1
+            while Usuari.objects.filter(username=username).exists():
+                username = f"{username_base}{counter}"
+                counter += 1
+            user = Usuari.objects.create(
+                email=email,
+                username=username,
+                first_name=first_name,
+                last_name=last_name,
+            )
+            try:
+                group = Group.objects.get(name="Usuari")
+                user.groups.add(group)
+            except Group.DoesNotExist:
+                print("El grupo 'Usuari' no existe. Crea el grupo en el admin de Django.")
+
+        # Genera un token propio
+        token = secrets.token_hex(16)
+        user.auth_token = token
+        user.save()
+        return api.create_response(request, {"token": token}, status=200)
+    except Exception as e:
+        print("ERROR MICROSOFT LOGIN:", e)
+        traceback.print_exc()
+        return api.create_response(request, {"detail": f"Token invàlid: {str(e)}"}, status=400)
+    
 class BarcodeRequest(Schema):
     exemplars: List[Dict[str, str]]  
 
