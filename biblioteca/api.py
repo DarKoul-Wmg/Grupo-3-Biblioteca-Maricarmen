@@ -14,8 +14,6 @@ from django.http import HttpRequest
 from django.db.models import Q, Value
 from django.db.models.functions import Concat
 from pathlib import Path
-
-
 from typing import List
 from django.http import HttpResponse
 from django.template.loader import get_template
@@ -27,7 +25,6 @@ from datetime import datetime
 
 # Importa las librerías necesarias para generar códigos y PDF
 import barcode
-
 from .models import *
 from typing import List, Optional, Union, Dict, Any
 import re  # For email validation
@@ -70,7 +67,6 @@ class BasicAuth(HttpBasicAuth):
         except Exception as e:
             raise HttpError(500, "Ha ocurrido un error al autenticar el usuario.")
 
-
 # Autenticació per Token Bearer
 class AuthBearer(HttpBearer):
     def authenticate(self, request, token):
@@ -79,8 +75,6 @@ class AuthBearer(HttpBearer):
             return user
         except Usuari.DoesNotExist:
             return None
-
-
 
 class UsuariOut(Schema):
     id: int
@@ -1064,17 +1058,17 @@ def generate_barcode_pdf(request, data: BarcodeRequest):
 
     barcode_images = []
     options = {
-        'module_height': 5.0,
+        'module_height': 4.9,
         'font_size': 7,
         'text_distance': 2.0,
-        'quiet_zone': 1.5
+        'quiet_zone': 0.4
     }
 
     for exemplar in exemplars:
         try:
             buffer = BytesIO()
             code_type = barcode.get_barcode_class('code128')
-            barcode_img = code_type(exemplar["id"], writer=ImageWriter())  
+            barcode_img = code_type(exemplar["id"].replace("-",""), writer=ImageWriter())  
             barcode_img.write(buffer, options=options)
             img_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
             image_data_uri = f"data:image/png;base64,{img_base64}"
