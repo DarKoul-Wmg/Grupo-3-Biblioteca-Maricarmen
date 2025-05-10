@@ -24,7 +24,7 @@ import base64
 from xhtml2pdf import pisa
 from barcode.writer import ImageWriter
 from datetime import datetime
-import os
+
 # Importa las librerías necesarias para generar códigos y PDF
 import barcode
 
@@ -45,6 +45,7 @@ import requests as pyrequests
 from jose import jwt
 import urllib.request
 from django.core.files.base import ContentFile
+import os
 
 
 api = NinjaAPI()
@@ -925,7 +926,7 @@ def import_users(request, file: UploadedFile = File(...)):
 
     return summary
 
-@api.post("/google-login/")
+@api.post("/google-login")
 @api.post("/google-login/")
 def google_login(request):
     body = json.loads(request.body.decode())
@@ -934,10 +935,11 @@ def google_login(request):
         print("No id_token found in request body")
         return api.create_response(request, {"detail": "No id_token"}, status=400)
     try:
+        google_client_id = os.environ.get("GOOGLE_CLIENT_ID")
         idinfo = id_token.verify_oauth2_token(
             id_token_str,
             requests.Request(),
-            "24541393337-df41pocq7fcqup1js9dr7816b2d5pq14.apps.googleusercontent.com"
+            google_client_id
         )
         email = idinfo["email"]
         first_name = idinfo.get("given_name", "")
@@ -995,6 +997,7 @@ def microsoft_login(request):
         return api.create_response(request, {"detail": "No id_token"}, status=400)
     try:
         # Obtén las claves públicas de Microsoft
+        microsoft_client_id = os.environ.get("MICROSOFT_CLIENT_ID")
         jwks_uri = "https://login.microsoftonline.com/common/discovery/v2.0/keys"
         jwks = pyrequests.get(jwks_uri).json()
         # Decodifica el token
@@ -1002,7 +1005,7 @@ def microsoft_login(request):
             id_token_str,
             jwks,
             algorithms=["RS256"],
-            audience="bcda1a3f-9cc5-4287-814b-d1d3d975a671"
+            audience=microsoft_client_id
         )
         email = claims.get("email") or claims.get("preferred_username")
         first_name = claims.get("given_name", "")
